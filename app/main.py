@@ -10,15 +10,19 @@ from app.features.frame.data import schema
 from app.features.frame.handlers import FramePage
 from app.features.home.handlers import HomePage
 from app.features.shots.handlers import ShotsPage
+from app.nudge.agent import build_agent, load_instructions
 
 
 async def bootstrap(app: App, span: Span):
     config = Config.from_env()
     app.use("/", same_origin(), security_headers())
-    span.attrs(await ASSETS.attach(app))
-    async with LiteWriter(config.db_path, schema=schema, claim=30) as db:
+    agent = build_agent(config)
+    model_name = config.model if config.openai_api_key.strip() else "fake"
+    span.attrs({**await ASSETS.attach(app), "nudge.model": model_name})
+    instructions = load_instructions()
+    async with LiteWriter(config.db_path, schema=schema, claim=30) as db, agent:
         HomePage(config.apps).register(app)
-        FramePage(db, config).register(app)
+        FramePage(db, config, agent, model_name, instructions).register(app)
         ShotsPage(config.shots_dir).register(app)
         yield
 

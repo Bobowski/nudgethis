@@ -16,6 +16,16 @@ async def next_patch(events):
     return event["data"]
 
 
+async def collect(events, limit=8):
+    blob = ""
+    try:
+        for _ in range(limit):
+            blob += await next_patch(events)
+    except TimeoutError:
+        pass
+    return blob
+
+
 async def test_unknown_app_is_404(client):
     r = await client.get(FRAME.href("nope"))
     assert r.status_code == 404
@@ -33,14 +43,13 @@ async def test_say_repaints_the_stream(client):
         events = live.iter_events()
         assert 'id="frame"' in await next_patch(events)
         r = await client.post(
-            SAY.href("alpha"),
-            json={"tab": "t1", "text": "make it red", "shots": []},
+            SAY.href("alpha"), json={"tab": "t1", "text": "make it red", "shots": []}
         )
         assert r.status_code == 200
-        html = await next_patch(events)
+        html = await collect(events)
         assert "make it red" in html
+        assert 'class="working"' in html
         assert "On it." in html
-        html = await next_patch(events)
         assert "Done." in html
         assert "Ship" in html
         assert "Not yet" in html
@@ -100,8 +109,7 @@ async def test_ship_patches_rev_and_says_live(client):
         events = live.iter_events()
         await next_patch(events)
         r = await client.post(
-            ACT.href("alpha"),
-            json={"tab": "t1", "message_id": mid, "action": "ship"},
+            ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "ship"}
         )
         assert r.status_code == 204
         assert "Live." in await next_patch(events)
@@ -120,18 +128,14 @@ async def test_act_on_a_shipped_change_is_409(client):
 async def test_act_on_a_message_of_another_app_is_404(client):
     mid = await done_message_id(client, app="beta")
     r = await client.post(
-        ACT.href("alpha"),
-        json={"tab": "t1", "message_id": mid, "action": "ship"},
+        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "ship"}
     )
     assert r.status_code == 404
 
 
 async def test_unknown_action_is_400(client):
     mid = await done_message_id(client)
-    r = await client.post(
-        ACT.href("alpha"),
-        json={"tab": "t1", "message_id": mid, "action": "fly"},
-    )
+    r = await client.post(ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "fly"})
     assert r.status_code == 400
 
 
@@ -141,8 +145,7 @@ async def test_not_yet_drops_the_change(client):
         events = live.iter_events()
         await next_patch(events)
         r = await client.post(
-            ACT.href("alpha"),
-            json={"tab": "t1", "message_id": mid, "action": "not_yet"},
+            ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "not_yet"}
         )
         assert r.status_code == 204
         assert "Okay. Tell me what to change." in await next_patch(events)

@@ -32,3 +32,7 @@ test:
 # refresh AGENTS.md, the skills, and the Cloud Agent files from the latest stario-create
 sync:
     uvx stario-create@latest sync
+
+# run the real-model smoke (needs OPENAI_API_KEY in .env)
+smoke:
+    uv run python -m scripts.smoke_nudge

@@ -5,6 +5,8 @@ from typing import Any, cast
 from litewriter import LiteWriter, Tx
 from stario.json import dumps, loads
 
+from app.nudge.data import apply_action
+
 MESSAGES_SQL = """
 SELECT m.id, m.data, c.status
 FROM messages m
@@ -35,6 +37,7 @@ class Message:
     actions: tuple[str, ...]
     change_id: int | None
     change_status: str | None
+    thinking: bool
 
 
 def message_row(id: int, data: str, status: str | None) -> Message:
@@ -49,6 +52,7 @@ def message_row(id: int, data: str, status: str | None) -> Message:
         actions=tuple(d["actions"]),
         change_id=d["change_id"],
         change_status=status,
+        thinking=d.get("thinking") is True,
     )
 
 
@@ -73,9 +77,15 @@ def schema(tx: Tx) -> None:
     tx.execute("CREATE INDEX IF NOT EXISTS messages_app ON messages(app)")
     tx.execute("CREATE INDEX IF NOT EXISTS messages_at ON messages(at)")
     tx.execute("CREATE INDEX IF NOT EXISTS changes_app_status ON changes(app, status)")
-    # The fake nudge job dies with the process: a change left working is dropped.
+    # Jobs die with the process: a change left working is dropped, a reply left
+    # thinking admits it was lost.
     tx.execute(
         "UPDATE changes SET data = json_set(data, '$.status', 'dropped') WHERE status = 'working'"
+    )
+    tx.execute(
+        "UPDATE messages SET data = json_set(data, '$.text',"
+        " 'I lost that one. Say it again.', '$.thinking', json('false'))"
+        " WHERE data->>'thinking' = 1"
     )
 
 
@@ -89,6 +99,23 @@ def get_message(db: LiteWriter, message_id: int) -> Message | None:
         """,
         message_row,
         id=message_id,
+    )
+
+
+def history_rows(db: LiteWriter, before_id: int, limit: int) -> list[Message]:
+    return list(
+        reversed(
+            db.query(
+                """
+                SELECT m.id, m.data, NULL FROM messages m
+                WHERE m.id < :before AND data->>'thinking' IS NOT 1
+                ORDER BY m.id DESC LIMIT :limit
+                """,
+                message_row,
+                before=before_id,
+                limit=limit,
+            )
+        )
     )
 
 
@@ -107,73 +134,57 @@ def shipped_rev(db: LiteWriter, app: str) -> int:
     return row[0] if row else 0
 
 
-def add_request(tx: Tx, app: str, text: str, shots: list[str]) -> int:
-    now = _now()
-    change_id = tx.value(
-        "INSERT INTO changes (data) VALUES (:data) RETURNING id",
+def _add_message(
+    tx: Tx, app: str, role: str, text: str, change_id: int | None, **extra: object
+) -> int:
+    return tx.value(
+        "INSERT INTO messages (data) VALUES (:data) RETURNING id",
         data=dumps(
             {
-                "app": app,
-                "brief": text,
-                "status": "working",
-                "created": now,
-                "updated": now,
-            }
-        ),
-    )
-    tx.execute(
-        "INSERT INTO messages (data) VALUES (:data)",
-        data=dumps(
-            {
-                "at": now,
-                "role": "you",
+                "at": _now(),
+                "role": role,
                 "app": app,
                 "text": text,
-                "shots": shots,
-                "actions": [],
+                "shots": extra.pop("shots", []),
+                "actions": extra.pop("actions", []),
                 "change_id": change_id,
+                **extra,
             }
         ),
     )
+
+
+def add_request(tx: Tx, app: str, text: str, shots: list[str]) -> tuple[int, int]:
+    you_id = _add_message(tx, app, "you", text, None, shots=shots)
+    placeholder_id = _add_message(tx, app, "nudge", "", None, thinking=True)
+    return you_id, placeholder_id
+
+
+def set_reply(tx: Tx, message_id: int, text: str, change_id: int | None) -> None:
     tx.execute(
-        "INSERT INTO messages (data) VALUES (:data)",
-        data=dumps(
-            {
-                "at": now,
-                "role": "nudge",
-                "app": app,
-                "text": "On it.",
-                "shots": [],
-                "actions": [],
-                "change_id": change_id,
-            }
-        ),
+        "UPDATE messages SET data = json_set(data, '$.text', :text,"
+        " '$.thinking', json('false'), '$.change_id', :cid) WHERE id = :id",
+        id=message_id,
+        text=text,
+        cid=change_id,
     )
-    return change_id
 
 
 def finish_change(tx: Tx, change_id: int, app: str) -> None:
-    now = _now()
     tx.execute(
         "UPDATE changes"
         " SET data = json_set(data, '$.status', 'ready', '$.updated', :now)"
         " WHERE id = :id",
         id=change_id,
-        now=now,
+        now=_now(),
     )
-    tx.execute(
-        "INSERT INTO messages (data) VALUES (:data)",
-        data=dumps(
-            {
-                "at": now,
-                "role": "nudge",
-                "app": app,
-                "text": "Done. (fake) I'd change that now.",
-                "shots": [],
-                "actions": ["ship", "not_yet"],
-                "change_id": change_id,
-            }
-        ),
+    _add_message(
+        tx,
+        app,
+        "nudge",
+        "Done. (fake) I'd change that now.",
+        change_id,
+        actions=["ship", "not_yet"],
     )
 
 
@@ -185,32 +196,12 @@ def drop_change(tx: Tx, change_id: int) -> None:
     )
 
 
-def apply_action(tx: Tx, message_id: int, change_id: int, app: str, action: str) -> None:
-    now = _now()
-    shipped = action == "ship"
-    tx.execute(
-        "UPDATE changes"
-        " SET data = json_set(data, '$.status', :status, '$.updated', :now)"
-        " WHERE id = :id",
-        id=change_id,
-        status="shipped" if shipped else "dropped",
-        now=now,
-    )
-    tx.execute(
-        "UPDATE messages SET data = json_set(data, '$.actions', json('[]')) WHERE id = :id",
-        id=message_id,
-    )
-    tx.execute(
-        "INSERT INTO messages (data) VALUES (:data)",
-        data=dumps(
-            {
-                "at": now,
-                "role": "nudge",
-                "app": app,
-                "text": "Live." if shipped else "Okay. Tell me what to change.",
-                "shots": [],
-                "actions": [],
-                "change_id": change_id,
-            }
-        ),
+def apply_action_with_reply(tx: Tx, change_id: int, app: str, action: str) -> None:
+    apply_action(tx, change_id, action)
+    _add_message(
+        tx,
+        app,
+        "nudge",
+        "Live." if action == "ship" else "Okay. Tell me what to change.",
+        change_id,
     )

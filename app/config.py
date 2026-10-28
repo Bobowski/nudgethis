@@ -20,6 +20,9 @@ def parse_apps(raw: str) -> tuple[tuple[str, str], ...]:
     return tuple(apps)
 
 
+EFFORTS = ("none", "low", "medium", "high")
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     apps: tuple[tuple[str, str], ...]
@@ -27,6 +30,12 @@ class Config:
     data_dir: Path
     db_path: Path
     shots_dir: Path
+    openai_api_key: str
+    openai_base_url: str | None
+    model: str
+    effort: str
+    history: int
+    timeout: float
 
     @classmethod
     def from_env(cls) -> Config:
@@ -35,10 +44,19 @@ class Config:
         data_dir.mkdir(parents=True, exist_ok=True)
         shots_dir = data_dir / "shots"
         shots_dir.mkdir(exist_ok=True)
+        effort = os.environ.get("NUDGE_EFFORT", "low").strip()
+        if effort not in EFFORTS:
+            raise ValueError(f"NUDGE_EFFORT must be one of {EFFORTS}: {effort!r}")
         return cls(
             apps=parse_apps(os.environ.get("NUDGE_APPS", "stario-site=https://stario.dev")),
             fake_delay=float(os.environ.get("NUDGE_FAKE_DELAY", "4")),
             data_dir=data_dir,
             db_path=data_dir / "nudgethis.sqlite3",
             shots_dir=shots_dir,
+            openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
+            openai_base_url=os.environ.get("OPENAI_BASE_URL") or None,
+            model=os.environ.get("NUDGE_MODEL", "gpt-6.1-terra").strip() or "gpt-6.1-terra",
+            effort=effort,
+            history=int(os.environ.get("NUDGE_HISTORY", "30")),
+            timeout=float(os.environ.get("NUDGE_TIMEOUT", "60")),
         )

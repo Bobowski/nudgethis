@@ -18,6 +18,8 @@ INK_LOOP = svg.Svg(
 
 def message_li(m: Message, current: str) -> HtmlElement:
     tag = h.Span({"class": "tag"}, m.app) if m.app != current else None
+    if m.thinking:
+        return h.Li({"class": "working"}, tag, INK_LOOP)
     if m.role == "you":
         return h.Li(
             {"class": "msg you"},
@@ -69,6 +71,7 @@ def render(
     rev: int,
     tab: str,
 ) -> HtmlElement:
+    busy = working or any(m.thinking for m in messages)
     return page(
         f"nudgethis · {name}",
         h.Div(
@@ -160,7 +163,7 @@ def render(
                         {"type": "button", "class": "pill"},
                         data.show("!$_pod"),
                         data.on("click", "$_pod = true"),
-                        INK_LOOP if working else None,
+                        INK_LOOP if busy else None,
                         "Nudge",
                     ),
                 ),
@@ -188,7 +191,9 @@ def render(
                                 )
                             ]
                         ),
-                        h.Li({"class": "working"}, INK_LOOP) if working else None,
+                        h.Li({"class": "working"}, INK_LOOP)
+                        if working and not (messages and messages[-1].thinking)
+                        else None,
                     ),
                     h.Form(
                         {"id": "composer"},
