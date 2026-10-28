@@ -176,4 +176,12 @@ Install is `.cursor/cloud-install.sh`. Use computer use only when the stream tes
 
 ## This app
 
-Notes for this app go below. `stario-create sync` replaces the text above and keeps this section.
+nudgethis is a frame around a live web app. The app runs full-size in an iframe. Beside it is the pod: one conversation with an agent called Nudge. The user snaps a screenshot of the iframe, draws on it (arrow, circle, box, text), writes one sentence, and Nudge changes the app's code; after "Ship" the iframe reloads.
+
+In this phase Nudge is fake and scripted. There is no LLM, no Cursor, no GitHub, no Yard call, and no auth (local only). A `POST /a/{app}/say` writes the message, a `changes` row (`working`), and the reply "On it.", then a `nudge.fake` job sleeps `NUDGE_FAKE_DELAY` and marks the change `ready` with a Ship / Not yet choice. `POST /a/{app}/act` ships or drops it.
+
+Config (`app/config.py`, all optional): `NUDGE_APPS` is a comma list of `name=url` (names `[a-z0-9-]+`, urls http(s); default `stario-site=https://stario.dev`). `NUDGE_FAKE_DELAY` seconds, default 4 (tests set 0). `PROJECT_DATA_DIR` holds `nudgethis.sqlite3` and `shots/` for the saved snaps.
+
+Features: `home` (`/`, the app list), `frame` (`/a/{app}` plus `live`, `say`, `act`; owns the `messages`, `changes`, and `notes` tables through `data.py`), and `shots` (`/shots/{name}`, serves a saved snap). The frame stream follows `db.watch` on the messages-join-changes query and also patches `_rev`, the newest shipped change id; `app.frame.rev` in `static/js/frame.js` reloads the iframe and plays the ink check when it changes. Snap and the ink editor are `app.snap` and `app.ink` in `static/js/`. Styling is plain CSS in `static/css/style.css` (oklch custom properties, light and dark), with the self-hosted Instrument Sans variable font in `static/fonts/`.
+
+The framed app must not send `x-frame-options: DENY` or a `frame-ancestors` rule that excludes nudgethis.

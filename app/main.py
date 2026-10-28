@@ -1,19 +1,26 @@
 import asyncio
 
+from litewriter import LiteWriter
 from stario import App, Span, serve
 from stario.http import same_origin, security_headers
 
 from app.assets import ASSETS
 from app.config import Config
+from app.features.frame.data import schema
+from app.features.frame.handlers import FramePage
 from app.features.home.handlers import HomePage
+from app.features.shots.handlers import ShotsPage
 
 
 async def bootstrap(app: App, span: Span):
     config = Config.from_env()
     app.use("/", same_origin(), security_headers())
     span.attrs(await ASSETS.attach(app))
-    HomePage(config.app_name).register(app)
-    yield
+    async with LiteWriter(config.db_path, schema=schema, claim=30) as db:
+        HomePage(config.apps).register(app)
+        FramePage(db, config).register(app)
+        ShotsPage(config.shots_dir).register(app)
+        yield
 
 
 if __name__ == "__main__":

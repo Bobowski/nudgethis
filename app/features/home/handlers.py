@@ -8,10 +8,10 @@ from app.features.home.views import render
 
 @dataclass(frozen=True, slots=True)
 class HomePage:
-    app_name: str
+    apps: tuple[tuple[str, str], ...]
 
     def register(self, app: App) -> None:
         app.add(HOME, self.show)
 
     async def show(self, c: Context, w: Writer) -> None:
-        w.html(render(self.app_name))
+        w.html(render(self.apps))
