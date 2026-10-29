@@ -56,7 +56,7 @@ def last_nudge(db_path: str) -> str | None:
     rows = con.execute("SELECT data FROM messages ORDER BY id").fetchall()
     con.close()
     last_you = max(i for i, (d,) in enumerate(rows) if json.loads(d)["role"] == "you")
-    for data, in rows[last_you + 1 :]:
+    for (data,) in rows[last_you + 1 :]:
         d = json.loads(data)
         if d["role"] == "nudge" and not d.get("thinking"):
             return d["text"]
