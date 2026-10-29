@@ -1,10 +1,12 @@
 [project]
 name = "nudgethis"
 version = "0.1.0"
-description = "Add your description here"
+description = "A frame around a live web app: snap it, draw on it, tell Nudge what to change"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "litewriter>=0.3.2,<0.4",
+    "pydantic-ai-slim[openai]>=2.38.0",
     "stario>=5.2,<6",
 ]
 

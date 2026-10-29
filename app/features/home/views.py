@@ -2,14 +2,25 @@ from stario import h
 from stario.markup import HtmlElement
 
 from app.common.shell import page
+from app.features.frame.urls import FRAME
 
 
-def render(app_name: str) -> HtmlElement:
+def render(apps: tuple[tuple[str, str], ...]) -> HtmlElement:
     return page(
-        app_name,
+        "nudgethis",
         h.Main(
             {"id": "home"},
-            h.H1(app_name),
-            h.P("Stario is running. Read AGENTS.md, then add a page."),
+            h.H1("nudgethis"),
+            h.Ul(
+                *[
+                    h.Li(
+                        h.A({"href": FRAME.href(name)}, name),
+                        h.Span({"class": "appurl"}, url),
+                    )
+                    for name, url in apps
+                ]
+            )
+            if apps
+            else h.P("No apps configured. Set NUDGE_APPS."),
         ),
     )

@@ -175,4 +175,12 @@ Install is `.cursor/cloud-install.sh`.
 
 ## This app
 
-Notes for this app go below. `stario-create sync` replaces the text above and keeps this section.
+nudgethis is a frame around a live web app. The app runs full-size in an iframe. Beside it is the pod: one conversation with an agent called Nudge. The user snaps a screenshot of the iframe, draws on it (arrow, circle, box, text), writes one sentence, and Nudge changes the app's code; after "Ship" the iframe reloads.
+
+Nudge is a real model now: OpenAI through pydantic-ai (Responses API) in `app/nudge/agent.py`. The coder sub-agent is still fake — after `start_change` the `nudge.fake` job marks the change `ready` after `NUDGE_FAKE_DELAY`. A `POST /a/{app}/say` writes the "you" message and a thinking placeholder, then a `nudge.turn` task runs `agent.run` and fills the placeholder. Tools: `start_change`, `ship`, `drop`, `remember`. The instructions live in `app/nudge/instructions.md` — the lead owns that text; the turn appends a dynamic block (open app, remembered notes, open changes). With no `OPENAI_API_KEY` the bootstrap builds a scripted `FunctionModel` ("fake mode", `nudge.model=fake`); tests always run in fake mode.
+
+Config (`app/config.py`, all optional): `NUDGE_APPS` is a comma list of `name=url` (names `[a-z0-9-]+`, urls http(s); default `stario-site=https://stario.dev`). `NUDGE_FAKE_DELAY` seconds, default 4 (tests set 0). `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `NUDGE_MODEL` (default `gpt-6.1-terra`), `NUDGE_EFFORT` (default `low`), `NUDGE_HISTORY` (default 30), `NUDGE_TIMEOUT` (default 60). `PROJECT_DATA_DIR` holds `nudgethis.sqlite3` and `shots/` for the saved snaps. `just smoke` runs `scripts/smoke_nudge.py` against the real model (just loads `.env`).
+
+Features: `home` (`/`, the app list), `frame` (`/a/{app}` plus `live`, `say`, `act`; owns the `messages`, `changes`, and `notes` tables through `data.py`), and `shots` (`/shots/{name}`, serves a saved snap). The frame stream follows `db.watch` on the messages-join-changes query and also patches `_rev`, the newest shipped change id; `app.frame.rev` in `static/js/frame.js` reloads the iframe and plays the ink check when it changes. Snap and the ink editor are `app.snap` and `app.ink` in `static/js/`. Styling is plain CSS in `static/css/style.css` (oklch custom properties, light and dark), with the self-hosted Instrument Sans variable font in `static/fonts/`.
+
+The framed app must not send `x-frame-options: DENY` or a `frame-ancestors` rule that excludes nudgethis.
