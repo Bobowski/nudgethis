@@ -1,6 +1,6 @@
 ---
 name: stario-feature
-description: Add, change, or remove a page (a resource with its own URL) in a Stario app. Use when the user asks for a new page or route, wants a page to update live or in every tab, adds a button, form, command, edit dialog, search box, sort, filter, or background job to a page, fixes a page that does not refresh, deletes a page, or checks a live update in a browser. Has complete files for a static page, a private read, a live page with a view in the URL and messages to one tab, slow work, and an edit dialog, plus a Playwright script for the morph.
+description: Add, change, or remove a page (a resource with its own URL) in a Stario app. Use when the user asks for a new page or route, wants a page to update live or in every tab, adds a button, form, command, edit dialog, search box, sort, filter, or background job to a page, fixes a page that does not refresh, deletes a page, or needs a browser check. Has complete files for a static page, a private read, a live page with a view in the URL and messages to one tab, slow work, and an edit dialog, plus a browser check script.
 ---
 
 # Add, change, or remove a page
@@ -10,9 +10,9 @@ description: Add, change, or remove a page (a resource with its own URL) in a St
 ## Decide first
 
 1. The resource. The path names it: `/todos`, `/rooms/{room_id}`. One folder `app/features/<page>/`, named after the URL noun.
-2. The view. Which query parameters decide what this tab sees: sort, filter, columns, page number. They go in a `View` in `urls.py`.
+2. The view, if any. Which query parameters decide what this tab sees: sort, filter, page number. They go in a `View` in `urls.py`. Most pages have none.
 3. The actions (`AGENTS.md`, A page is a resource). Only commands make a page live: page `GET`, `GET .../live`, one `POST` per command.
-4. Messages to one tab. Does a command need to tell its own tab something after the work (a conflict, a toast)? Then the stream follows `Relay`. If not, and the rows are in SQLite, the stream can follow `db.watch`.
+4. The stream source. Rows in SQLite: `db.watch` (the common case). A command that must tell its own tab something after the work (a conflict, a toast): `Relay` with a tab id.
 5. State. None, an object built in `bootstrap`, or tables in `data.py`. Ask the developer before you add a database.
 6. Slow work. A command that waits on something slow becomes a job.
 
@@ -22,55 +22,11 @@ description: Add, change, or remove a page (a resource with its own URL) in a St
 2. `app/main.py`: build the shared objects once, then `TodosPage(db, relay).register(app)` before `yield`. Join the schema functions of every page into one `schema(tx)`.
 3. A link from another page: import its `urls.py`: `h.A({"href": TODOS.href(query={"sort": "title"})}, ...)`.
 4. `tests/test_<page>.py`: the page loads; the view follows the query; a command repaints the stream; bad input gets 4xx. Assert the changed HTML in the next SSE event. Do not open a browser for that.
-5. `just check`. Fix every failure. The Playwright script in "Check a live update" is for the morph, after the stream test is green.
+5. `just check`. Fix every failure. A browser is only for what `AGENTS.md` (Checks) names.
 
-## API at a glance
+## API
 
-Import from `stario` unless noted. Do not grep site-packages for signatures.
-
-```text
-app.add(ROUTE, handler)            # one method+path route; app.use("/prefix", mw)
-app.create_task(coro)              # tracked task; app.shutting_down is True while draining
-
-c.req.query  c.req.cookies         # request maps; c.match.params are the path captures
-c.state                            # dict that middleware fills; c.app is the App
-c.span                             # this request's trace span
-c.alive(source)                    # async iterator until disconnect or shutdown
-c.req.headers.get("datastar-request")    # truthy for Datastar actions; pick
-                                         # SSE(w).navigate(url) over w.redirect
-
-w.html(render(...))   w.text("why", status=400)   w.empty()   w.json(value)
-w.redirect(url, status=303)        # one answer per handler
-set_cookie(w, "sid", token)        # stario.cookies; delete_cookie(w, "sid") clears
-
-signals = await read_signals(c.req)
-sse = SSE(w)                       # sse.patch_elements(part), sse.patch_signals({...}),
-                                 # sse.navigate(url), sse.execute_script(code)
-
-data.signals({...}, if_missing=True)   data.bind("title")
-data.indicator("_saving")  # on the element whose data.on sends the request
-data.on("click", at.post(ADD.href()), prevent=True)
-data.init(at.get(LIVE.href(), retry="always"))
-data.text(e) data.show(e) data.attr("disabled", e) data.class_("on", e)
-data.preserve_attr("open")  data.ignore_morph()  data.persist()  # survives reload
-at.get(url, retry="always")   at.post(url)
-data.on("input", expr, debounce="200ms")         # also throttle, once, target=
-from stario.markup import svg                    # svg.Svg, svg.Circle, svg.Path, ...
-
-STARIO_HOST / STARIO_PORT                        # ServerConfig.from_env, 127.0.0.1 / 8000
-
-h.Div({"id": "app"}, h.P("hi"))    # every tag is h.Name; first arg may be an attrs
-                                   # dict; None children are skipped
-
-relay.publish(CHANGED, {})
-async with relay.subscribe(CHANGED, f"tab.{tab}", latest=True) as events: ...
-
-span.attrs({...})  span.event("name")  span.fail("why")  span.step("job.run")
-
-client = TestClient(bootstrap, request_timeout=5)   # get, post(url, json=signals)
-async with client.stream("GET", url, params=TAB) as live: live.iter_events()
-client.tracer.find_span("job.run")
-```
+Load skill `stario-api` with this one. It has every signature: `c`, `w`, `h.*`, Relay, TestClient, `data.*`, `at.*`, `SSE`. Do not read `site-packages`.
 
 ## A static page
 
@@ -171,7 +127,207 @@ Test it with `client.get(SEARCH_RESULTS.href(), params={"datastar": '{"q": "par"
 
 ## A live page
 
-A shared todo list in SQLite (skill `stario-litewriter`). The sort and the filter are in the URL. A duplicate title is a message to the tab that sent it.
+The common case: a shared todo list in SQLite (skill `stario-litewriter`). The stream follows `db.watch`, so the commands only write. No view, no tab id, no `Relay`.
+
+```python
+# urls.py
+from stario import Route
+
+TODOS = Route("GET /todos")
+TODOS_LIVE = Route("GET /todos/live")
+ADD_TODO = Route("POST /todos")
+TOGGLE_TODO = Route("POST /todos/{todo_id}/toggle")
+```
+
+```python
+# data.py
+from dataclasses import dataclass
+
+from litewriter import LiteWriter, Tx
+from stario.json import dumps
+
+COLUMNS = {
+    "title": "TEXT AS (data->>'title')",
+    "done": "INTEGER AS (data->>'done')",
+}
+
+ITEMS = "SELECT id, title, done FROM todos ORDER BY id"
+
+
+@dataclass(frozen=True, slots=True)
+class Todo:
+    id: int
+    title: str
+    done: int
+
+
+def schema(tx: Tx) -> None:
+    tx.execute(
+        "CREATE TABLE IF NOT EXISTS todos ("
+        " id INTEGER PRIMARY KEY, data TEXT NOT NULL CHECK (json_valid(data)))"
+    )
+    have = {row[0] for row in tx.query("SELECT name FROM pragma_table_xinfo('todos')")}
+    for name, column in COLUMNS.items():
+        if name not in have:
+            tx.execute(f"ALTER TABLE todos ADD COLUMN {name} {column} VIRTUAL")
+
+
+def list_todos(db: LiteWriter) -> list[Todo]:
+    return db.query(ITEMS, Todo)
+
+
+def get_todo(db: LiteWriter, todo_id: int) -> Todo | None:
+    return db.one("SELECT id, title, done FROM todos WHERE id = :id", Todo, id=todo_id)
+
+
+def add_todo(tx: Tx, title: str) -> int:
+    return tx.value(
+        "INSERT INTO todos (data) VALUES (:data) RETURNING id",
+        data=dumps({"title": title, "done": False}),
+    )
+
+
+def toggle_done(tx: Tx, todo_id: int) -> None:
+    tx.execute(
+        "UPDATE todos SET data = json_set(data, '$.done', json(iif(done, 'false', 'true')))"
+        " WHERE id = :id",
+        id=todo_id,
+    )
+```
+
+```python
+# views.py
+from stario import h
+from stario.datastar import at, data
+from stario.markup import HtmlElement
+
+from app.common.shell import page
+from app.features.todos.data import Todo
+from app.features.todos.urls import ADD_TODO, TODOS_LIVE, TOGGLE_TODO
+
+
+def render(items: list[Todo]) -> HtmlElement:
+    return page(
+        "Todos",
+        h.Main(
+            {"id": "todos"},
+            data.signals({"title": ""}, if_missing=True),
+            data.init(at.get(TODOS_LIVE.href(), retry="always")),
+            h.H1("Todos"),
+            h.Form(
+                data.on("submit", at.post(ADD_TODO.href()), prevent=True),
+                data.indicator("_adding"),
+                h.Input(
+                    {
+                        "type": "text",
+                        "placeholder": "What needs doing?",
+                        "autocomplete": "off",
+                        "required": True,
+                    },
+                    data.bind("title"),
+                ),
+                h.Button({"type": "submit"}, data.attr("disabled", "$_adding"), "Add"),
+            ),
+            h.Ul(*[item(t) for t in items]) if items else h.P("Nothing to do yet."),
+        ),
+    )
+
+
+def item(t: Todo) -> HtmlElement:
+    return h.Li(
+        h.Label(
+            h.Input(
+                {"type": "checkbox", "checked": bool(t.done)},
+                data.on("click", at.post(TOGGLE_TODO.href(t.id)), prevent=True),
+            ),
+            h.S(t.title) if t.done else t.title,
+        )
+    )
+```
+
+```python
+# handlers.py
+from dataclasses import dataclass
+
+from litewriter import LiteWriter
+from stario import App, Context, Writer
+from stario.datastar import SSE, read_signals
+
+from app.features.todos.data import ITEMS, Todo, add_todo, get_todo, list_todos, toggle_done
+from app.features.todos.urls import ADD_TODO, TODOS, TODOS_LIVE, TOGGLE_TODO
+from app.features.todos.views import render
+
+
+@dataclass(frozen=True, slots=True)
+class TodosPage:
+    db: LiteWriter
+
+    def register(self, app: App) -> None:
+        app.add(TODOS, self.show)
+        app.add(TODOS_LIVE, self.live)
+        app.add(ADD_TODO, self.add)
+        app.add(TOGGLE_TODO, self.toggle)
+
+    async def show(self, c: Context, w: Writer) -> None:
+        w.html(render(list_todos(self.db)))
+
+    async def live(self, c: Context, w: Writer) -> None:
+        sse = SSE(w)
+        async with self.db.watch(ITEMS, Todo) as rows:
+            async for todos in c.alive(rows):
+                sse.patch_elements(render(todos))
+
+    async def add(self, c: Context, w: Writer) -> None:
+        title = str((await read_signals(c.req)).get("title", "")).strip()
+        if not title or len(title) > 200:
+            w.text("title must be 1 to 200 characters", status=400)
+            return
+        SSE(w).patch_signals({"title": ""})
+        await self.db.write(add_todo, title)
+
+    async def toggle(self, c: Context, w: Writer) -> None:
+        todo_id = c.match.params["todo_id"]
+        if not todo_id.isdecimal() or get_todo(self.db, int(todo_id)) is None:
+            w.text("no such todo", status=404)
+            return
+        w.empty()
+        await self.db.write(toggle_done, int(todo_id))
+```
+
+```python
+# tests/test_todos.py
+async def test_add_repaints_the_stream(client):
+    async with client.stream("GET", TODOS_LIVE.href()) as live:
+        events = live.iter_events()
+        assert 'id="todos"' in (await anext(events))["data"]
+        r = await client.post(ADD_TODO.href(), json={"title": "Buy milk"})
+        assert r.status_code == 200
+        assert "Buy milk" in (await anext(events))["data"]
+
+
+async def test_toggle_repaints_the_stream(client):
+    await client.post(ADD_TODO.href(), json={"title": "Buy milk"})
+    async with client.stream("GET", TODOS_LIVE.href()) as live:
+        events = live.iter_events()
+        first = (await anext(events))["data"]
+        assert "Buy milk" in first
+        assert "checked" not in first
+        r = await client.post(TOGGLE_TODO.href(1))
+        assert r.status_code == 204
+        assert "checked" in (await anext(events))["data"]
+```
+
+`add` replies with `patch_signals` to clear the input, then awaits the write; the commit wakes the watch, and every open tab repaints. `main.py` builds the `LiteWriter` once and passes it: `TodosPage(db).register(app)`.
+
+Add more only when the page needs it:
+
+- A sort, a filter, or paging: a `View` in `urls.py` (next section).
+- A message to the tab that sent a command (a conflict, a toast): a tab id and `Relay` (next section, and Messages to one tab).
+- State in memory, not SQLite: the stream follows `relay.subscribe(CHANGED, latest=True)`, and each command publishes `CHANGED` after it changes the state.
+
+## A view and messages to one tab
+
+The same list with the sort and the filter in the URL. A duplicate title is a message to the tab that sent it.
 
 ```python
 # urls.py
@@ -205,62 +361,16 @@ class TodosView:
 An unknown value falls back to the default, so an old link still opens.
 
 ```python
-# data.py
-from dataclasses import dataclass
-
-from litewriter import LiteWriter, Tx
-from stario.json import dumps
-
-from app.features.todos.urls import TodosView
-
-COLUMNS = {
-    "title": "TEXT AS (data->>'title')",
-    "done": "INTEGER AS (data->>'done')",
-}
+# data.py: the table above, plus a unique title and one query per view
 ORDER = {"new": "id DESC", "title": "lower(title)"}
 
-
-@dataclass(frozen=True, slots=True)
-class Todo:
-    id: int
-    title: str
-    done: int
-
-
-def schema(tx: Tx) -> None:
-    tx.execute(
-        "CREATE TABLE IF NOT EXISTS todos ("
-        " id INTEGER PRIMARY KEY, data TEXT NOT NULL CHECK (json_valid(data)))"
-    )
-    have = {row[0] for row in tx.query("SELECT name FROM pragma_table_xinfo('todos')")}
-    for name, column in COLUMNS.items():
-        if name not in have:
-            tx.execute(f"ALTER TABLE todos ADD COLUMN {name} {column} VIRTUAL")
-    tx.execute("CREATE UNIQUE INDEX IF NOT EXISTS todos_title ON todos(lower(title))")
+# in schema(), after the columns:
+tx.execute("CREATE UNIQUE INDEX IF NOT EXISTS todos_title ON todos(lower(title))")
 
 
 def list_todos(db: LiteWriter, view: TodosView) -> list[Todo]:
     where = "WHERE done = 0" if view.hide_done else ""
     return db.query(f"SELECT id, title, done FROM todos {where} ORDER BY {ORDER[view.sort]}", Todo)
-
-
-def get_todo(db: LiteWriter, todo_id: int) -> Todo | None:
-    return db.one("SELECT id, title, done FROM todos WHERE id = :id", Todo, id=todo_id)
-
-
-def add_todo(tx: Tx, title: str) -> int:
-    return tx.value(
-        "INSERT INTO todos (data) VALUES (:data) RETURNING id",
-        data=dumps({"title": title, "done": False}),
-    )
-
-
-def toggle_todo(tx: Tx, todo_id: int) -> None:
-    tx.execute(
-        "UPDATE todos SET data = json_set(data, '$.done', json(iif(done, 'false', 'true')))"
-        " WHERE id = :id",
-        id=todo_id,
-    )
 ```
 
 The f-strings paste only constants from this file. Every outside value is a `:name` parameter.
@@ -331,7 +441,7 @@ from litewriter import LiteWriter
 from stario import App, Context, Relay, Writer
 from stario.datastar import SSE, read_signals
 
-from app.features.todos.data import add_todo, get_todo, list_todos, toggle_todo
+from app.features.todos.data import add_todo, get_todo, list_todos, toggle_done
 from app.features.todos.urls import ADD_TODO, TODOS, TODOS_LIVE, TOGGLE_TODO, TodosView
 from app.features.todos.views import render
 
@@ -390,7 +500,7 @@ class TodosPage:
             w.text("no such todo", status=404)
             return
         w.empty()
-        await self.db.write(toggle_todo, int(todo_id))
+        await self.db.write(toggle_done, int(todo_id))
         self.relay.publish(CHANGED, {})
 ```
 
@@ -629,47 +739,57 @@ async def test_add_shows_on_another_tab(client):
         assert "milk" in (await anext(two))["data"]
 ```
 
-### Playwright, when the browser is the question
+### Browser check
 
-Run this after the stream test is green, and only when the question is whether Datastar applied the patch. The viewer's DOM changes because its SSE stream delivered the HTML and Datastar morphed it. Headless, one script, re-runnable. Leave `playwright` out of the app's dependencies, so `just check` stays the fast path. Both pages come from one browser context, so they share cookies the way two tabs do. `browser.new_page()` would open a second context and drop the session.
+Use it only for what `AGENTS.md` (Checks) sends to a browser: client JS that holds state, or a browser bug that no test reproduces. When the user watches the app, the user is the browser; skip this.
 
-`just dev` is already serving the app. Point the URL and the locators at the page you changed.
+The script starts its own server on a free port and stops it in `finally`. It never touches a server it did not start. Keep `playwright` out of the app's dependencies, so `just check` stays fast. Both pages share one browser context, so they share cookies like two tabs.
 
 ```python
-# check_live.py
+# scripts/browser.py
 import asyncio
+import os
+import socket
+import subprocess
+import sys
 
 from playwright.async_api import async_playwright, expect
 
 
 async def main() -> None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        context = await browser.new_context()
-        viewer = await context.new_page()
-        actor = await context.new_page()
-        await viewer.goto("http://127.0.0.1:8000/todos")
-        await actor.goto("http://127.0.0.1:8000/todos")
-        await actor.locator("input[type=text]").fill("milk")
-        await actor.get_by_role("button", name="Add").click()
-        await expect(viewer.get_by_role("button", name="milk")).to_be_visible()
-        await expect(actor.locator("input[type=text]")).to_have_value("")
-        await browser.close()
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    env = os.environ | {"STARIO_PORT": str(port), "PROJECT_DATA_DIR": "/tmp/browser-check"}
+    server = subprocess.Popen([sys.executable, "-m", "app.main"], env=env)
+    try:
+        await asyncio.sleep(1)
+        url = f"http://127.0.0.1:{port}/todos"
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context()
+            viewer, actor = await context.new_page(), await context.new_page()
+            await viewer.goto(url)
+            await actor.goto(url)
+            await actor.locator("input[type=text]").fill("milk")
+            await actor.get_by_role("button", name="Add").click()
+            await expect(viewer.get_by_role("button", name="milk")).to_be_visible(timeout=5000)
+            await viewer.screenshot(path="/tmp/browser-check/todos.png")
+            await browser.close()
+    finally:
+        server.terminate()
+        server.wait(5)
 
 
-asyncio.run(main())
+asyncio.run(asyncio.wait_for(main(), 60))
 ```
 
 ```bash
 uv run --with playwright playwright install chromium
-uv run --with playwright python check_live.py
+uv run --with playwright python scripts/browser.py
 ```
 
-If Chromium will not start, `uv run --with playwright playwright install-deps chromium` installs its system libraries and needs root.
-
-One page is enough when the click and the result are on the same tab: `await expect(page.get_by_text("Public")).to_be_visible()`. For a dialog that must survive a repaint, open it on the viewer, change state from the actor, then expect the dialog to still be visible and the field to still hold what was typed. Delete `check_live.py` when it passes, unless the developer asks to keep a browser suite.
-
-Computer use — a session that clicks and looks — is for a judgment this script cannot make (spacing, contrast, overlap). It comes after the stream test, and after this script when the morph is in doubt.
+Point the URL and the locators at the page you changed. Wait for a visible result with `expect`, not with a sleep. Keep the script when the app has client JS that holds state; delete it otherwise.
 
 ## Remove a page
 
