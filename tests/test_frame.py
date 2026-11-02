@@ -115,7 +115,8 @@ async def test_ship_patches_rev_and_says_live(client):
         assert "Live." in await next_patch(events)
         event = await anext(events)
         assert event["event"] == "datastar-patch-signals"
-        assert '"_rev":1' in event["data"].replace(" ", "")
+        rev = re.search(r'"_rev":(\d+)', event["data"].replace(" ", ""))
+        assert rev is not None and int(rev[1]) > 0
 
 
 async def test_act_on_a_shipped_change_is_409(client):

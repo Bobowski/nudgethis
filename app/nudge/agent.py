@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -33,7 +33,8 @@ class TurnDeps:
     db: LiteWriter
     app_name: str
     you_message_id: int
-    start_ready: Callable[[int], None]
+    start_ready: Callable[[int, str], None]
+    settle: Callable[[int, str], Awaitable[str]]
     called: list[str] = field(default_factory=list)
     change_id: int | None = None
 
@@ -102,18 +103,20 @@ def build_agent(config: Config, *, model: Any = None) -> Agent[TurnDeps, str]:
             deps.you_message_id,
         )
         deps.change_id = change_id
-        deps.start_ready(change_id)
+        deps.start_ready(change_id, brief.strip())
         return f"change #{change_id} started"
 
     @agent.tool
     async def ship(ctx: RunContext[TurnDeps], change_id: int) -> str:
         """Ship a ready change of the open app."""
-        return await _settle(ctx, change_id, "ship")
+        ctx.deps.called.append("ship")
+        return await ctx.deps.settle(change_id, "ship")
 
     @agent.tool
     async def drop(ctx: RunContext[TurnDeps], change_id: int) -> str:
         """Drop a ready change of the open app."""
-        return await _settle(ctx, change_id, "not_yet")
+        ctx.deps.called.append("drop")
+        return await ctx.deps.settle(change_id, "not_yet")
 
     @agent.tool
     async def remember(ctx: RunContext[TurnDeps], note: str, app_only: bool) -> str:
@@ -127,13 +130,3 @@ def build_agent(config: Config, *, model: Any = None) -> Agent[TurnDeps, str]:
         return "noted"
 
     return agent
-
-
-async def _settle(ctx: RunContext[TurnDeps], change_id: int, action: str) -> str:
-    deps = ctx.deps
-    deps.called.append("ship" if action == "ship" else "drop")
-    row = nudge_data.get_change(deps.db, change_id)
-    if row is None or row[1] != deps.app_name or row[2] != "ready":
-        return f"change #{change_id} is not ready"
-    await deps.db.write(nudge_data.apply_action, change_id, action)
-    return f"change #{change_id} {'shipped' if action == 'ship' else 'dropped'}"

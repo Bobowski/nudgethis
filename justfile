@@ -3,6 +3,9 @@
 # load secrets/config from .env (gitignored)
 set dotenv-load := true
 
+# Ship merges the pull request on GitHub. Without GITHUB_TOKEN in .env, use the gh login.
+export GITHUB_TOKEN := env("GITHUB_TOKEN", `gh auth token 2>/dev/null || true`)
+
 # run the app with hot reload
 dev:
     # `python`, not `uv run python`: the app must be watchfiles' direct child.
