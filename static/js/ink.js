@@ -1,24 +1,39 @@
 window.app ??= {};
+// The ink editor: a snap fills the canvas, the tools draw on it, and take()
+// hands back the marked shot and the clean one. Text is typed in place: a
+// click with the text tool shows the input there, and Enter or a click away
+// writes it onto the canvas.
 app.ink = {
   mount(el) {
     this.el = el;
     this.canvas = el.querySelector("canvas");
     this.ctx = this.canvas.getContext("2d");
+    this.textEl = el.querySelector(".inktext");
     this.ops = [];
     this.draft = null;
     this.t = "marker";
-    this.doneCb = null;
     this.img = null;
+    this.at = null;
     this.canvas.addEventListener("pointerdown", (e) => this.down(e));
     this.canvas.addEventListener("pointermove", (e) => this.move(e));
     this.canvas.addEventListener("pointerup", (e) => this.up(e));
     this.canvas.addEventListener("pointercancel", (e) => this.up(e));
+    this.textEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.write();
+      } else if (e.key === "Escape") {
+        e.stopPropagation();
+        this.hideText();
+      }
+    });
+    this.textEl.addEventListener("blur", () => this.write());
   },
 
-  open(src, done) {
-    this.doneCb = done;
+  open(src) {
     this.ops = [];
     this.draft = null;
+    this.hideText();
     this.el.classList.add("on");
     const img = new Image();
     img.onload = () => {
@@ -46,6 +61,7 @@ app.ink = {
   },
 
   tool(name) {
+    this.write();
     this.t = name;
     for (const b of this.el.querySelectorAll("[data-tool]")) {
       b.classList.toggle("on", b.dataset.tool === name);
@@ -53,16 +69,20 @@ app.ink = {
   },
 
   undo() {
+    this.hideText();
     if (this.draft) this.draft = null;
     else this.ops.pop();
     this.redraw();
   },
 
   cancel() {
+    this.hideText();
     this.el.classList.remove("on");
   },
 
-  done() {
+  // The marked shot and the clean one, cropped to the image; the editor closes.
+  take() {
+    this.write();
     const dpr = this.canvas.width / this.w;
     const scale = Math.min(1, 1600 / (Math.max(this.fw, this.fh) * dpr));
     const c = document.createElement("canvas");
@@ -74,18 +94,16 @@ app.ink = {
     const marked = c.toDataURL("image/png");
     ctx.drawImage(this.img, 0, 0, c.width, c.height);
     this.el.classList.remove("on");
-    this.doneCb([marked, c.toDataURL("image/png")]);
+    return [marked, c.toDataURL("image/png")];
   },
 
   down(e) {
     if (!this.img) return;
     const p = this.point(e);
     if (this.t === "text") {
-      const str = window.prompt("Label");
-      if (str) {
-        this.ops.push({ t: "t", x: p[0], y: p[1], str });
-        this.redraw();
-      }
+      e.preventDefault();
+      this.write();
+      this.place(p);
       return;
     }
     this.canvas.setPointerCapture(e.pointerId);
@@ -111,6 +129,31 @@ app.ink = {
     this.ops.push(this.draft);
     this.draft = null;
     this.redraw();
+  },
+
+  // The input sits on the click; its text baseline is where fillText writes.
+  place(p) {
+    this.at = [p[0], p[1] + 6];
+    const s = this.textEl.style;
+    s.left = `${p[0] - 4}px`;
+    s.top = `${p[1] - 12}px`;
+    s.color = this.color;
+    this.textEl.value = "";
+    this.textEl.hidden = false;
+    this.textEl.focus();
+  },
+
+  write() {
+    if (!this.at) return;
+    const str = this.textEl.value.trim();
+    if (str) this.ops.push({ t: "t", x: this.at[0], y: this.at[1], str });
+    this.hideText();
+    this.redraw();
+  },
+
+  hideText() {
+    this.at = null;
+    this.textEl.hidden = true;
   },
 
   point(e) {
