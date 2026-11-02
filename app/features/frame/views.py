@@ -2,7 +2,7 @@ from stario import h
 from stario.datastar import at, data
 from stario.markup import HtmlElement, svg
 
-from app.common.shell import page
+from app.common.shell import INK_LOOP, page
 from app.features.frame.data import Message
 from app.features.frame.urls import FRAME_LIVE, SAY, UNDO
 from app.features.home.urls import HOME
@@ -16,10 +16,6 @@ STATUS_LABELS = {
     "dropped": "Failed",
 }
 
-INK_LOOP = svg.Svg(
-    {"viewBox": "0 0 48 12", "class": "inkloop", "aria-hidden": "true"},
-    svg.Path({"d": "M2 8 C 10 2, 16 12, 24 7 S 40 3, 46 8"}),
-)
 
 SNAP_ICON = svg.Svg(
     {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},

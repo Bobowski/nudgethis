@@ -14,6 +14,17 @@ just dev
 
 Then open http://127.0.0.1:8000 and pick an app.
 
+## New apps
+
+The home page lists the apps and has a New app field. A name such as `plants` makes:
+
+1. the private repo `Bobowski/nudge-plants`, through Yard;
+2. its first commit, a copy of `Bobowski/nudge-template` (a `stario-create new` app) with the name in place of `starter`;
+3. the Yard app `nudge-plants` on `https://plants.wrati.dev`, whose Caddy site lets only nudgethis frame it;
+4. the first deploy. When it is ok, the app opens in the frame.
+
+All of it goes through `YARD_TOKEN`: Yard creates the repo and gives a one-hour token for each repo. The Cursor GitHub app must cover all `Bobowski` repos, so that Cursor can work on a new one.
+
 ## Try it locally
 
 1. In `.env`, set `CURSOR_API_KEY` and `NUDGE_APPS` for an app that has a repo `Bobowski/<name>`.
@@ -44,6 +55,7 @@ Optional:
 - `CURSOR_API_KEY` — the Cursor key for Cloud Agents. Empty means the fake coder.
 - `CURSOR_MODEL` — optional Cursor model id. Empty means Cursor's default.
 - `NUDGE_REPO_BASE` — the repo of an app is `<base>/<name>`. Default `https://github.com/Bobowski`.
+- `NUDGE_DOMAIN` — new apps live on `<name>.<domain>`, default `wrati.dev`. `NUDGE_TEMPLATE` — the template repo, default `https://github.com/Bobowski/nudge-template`.
 - `YARD_URL` — default `https://yard.bobowski.dev`. `YARD_TOKEN` — a Yard token (`yard token new`). Without it, a change is live when the run ends, not when the deploy ends.
 - `PROJECT_DATA_DIR` — data directory (`nudgethis.sqlite3`, `shots/`). Default `./data`.
 

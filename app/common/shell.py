@@ -1,8 +1,14 @@
 from stario import h
 from stario.datastar import ModuleScript, data
-from stario.markup import HtmlElement, baked
+from stario.markup import HtmlElement, baked, svg
 
 from app.assets import DATASTAR_JS, SCRIPTS, STYLE_CSS
+
+# The moving ink line: Nudge or the coder is at work.
+INK_LOOP = svg.Svg(
+    {"viewBox": "0 0 48 12", "class": "inkloop", "aria-hidden": "true"},
+    svg.Path({"d": "M2 8 C 10 2, 16 12, 24 7 S 40 3, 46 8"}),
+)
 
 
 @baked
