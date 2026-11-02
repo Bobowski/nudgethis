@@ -148,7 +148,16 @@ button:disabled { opacity: 0.4; cursor: default; }
   display: block;
   background: var(--paper);
 }
-.stage.away { transform: translateX(-14%) scale(0.96); }
+/* A phone: the panel covers all but a strip of the app; a tap on the strip closes it. */
+.stage.away { transform: translateX(-12%) scale(0.96); }
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  border-radius: 0;
+  background: oklch(0 0 0 / 0.12);
+}
 
 /* ---------- the pill and its cards ---------- */
 
@@ -357,8 +366,10 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 #history {
   position: absolute;
-  inset: 0;
-  z-index: 15;
+  inset: 0 0 0 28px;
+  z-index: 25;
+  border-radius: 22px 0 0 22px;
+  box-shadow: -12px 0 40px -18px var(--glass-shade);
   display: flex;
   flex-direction: column;
   padding: var(--edge) 0 0;
@@ -367,6 +378,15 @@ button:disabled { opacity: 0.4; cursor: default; }
   transition: transform 0.5s var(--ease);
 }
 #history.open { transform: none; }
+
+/* A large screen: the panel sits beside the app, and the app stays in use. */
+@media (min-width: 900px) {
+  :root { --panel: 400px; }
+  #history { left: auto; width: var(--panel); border-radius: 0; }
+  .stage { transition: transform 0.55s var(--ease), right 0.5s var(--ease); }
+  .stage.away { transform: none; right: var(--panel); }
+  .scrim { display: none !important; }
+}
 
 .histhead {
   display: flex;
@@ -489,32 +509,59 @@ button:disabled { opacity: 0.4; cursor: default; }
   position: fixed;
   inset: 0;
   display: none;
+  flex-direction: column;
   z-index: 30;
   background: var(--tint);
 }
-.ink.on { display: block; }
+.ink.on { display: flex; }
+.inkstage { position: relative; flex: 1; min-height: 0; }
 .inkcanvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
   touch-action: none;
   cursor: crosshair;
 }
-.inktools {
+.inktext {
   position: absolute;
-  left: 50%;
-  bottom: var(--edge-bottom);
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  padding: 5px;
-  border-radius: 999px;
-  max-width: calc(100vw - 24px);
-  overflow-x: auto;
+  min-width: 8ch;
+  font: 600 18px/24px "Instrument Sans", sans-serif;
+  padding: 0 3px;
+  background: color-mix(in oklch, var(--paper) 70%, transparent);
+  border: 1px dashed currentColor;
+  border-radius: 4px;
+  outline: none;
 }
-.inktools button { border-color: transparent; font-size: 0.84rem; padding: 6px 12px; white-space: nowrap; }
-.inktools button.on { color: var(--accent); background: color-mix(in oklch, var(--accent) 12%, transparent); }
-.inktools .done { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.inkbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0 12px var(--edge-bottom);
+  padding: 6px;
+  border-radius: 24px;
+}
+.inktools { display: flex; gap: 2px; }
+.inktools .round { width: 38px; height: 38px; color: var(--dim); }
+.inktools .round.on { color: var(--accent); background: color-mix(in oklch, var(--accent) 14%, transparent); }
+.inkmsg { flex: 1 1 280px; display: flex; align-items: flex-end; gap: 6px; min-width: 0; }
+.inkmsg textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  max-height: 24vh;
+  field-sizing: content;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 8px 6px;
+  resize: none;
+  outline: none;
+}
+.inkmsg .round:not(.send) { background: color-mix(in oklch, var(--ink) 8%, transparent); }
 
 /* ---------- misc ---------- */
 

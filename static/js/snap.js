@@ -19,11 +19,11 @@ app.snap = {
     }
   },
 
-  async go(done, hint) {
+  async go(hint) {
     const url = await this.grab();
     if (url) {
       hint("");
-      app.ink.open(url, done);
+      app.ink.open(url);
     } else if (this.inputEl) {
       hint("Take a screenshot, then pick it.");
       this.inputEl.click();
@@ -32,12 +32,12 @@ app.snap = {
     }
   },
 
-  pick(evt, done) {
+  pick(evt) {
     const file = evt.target.files && evt.target.files[0];
     evt.target.value = "";
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => app.ink.open(reader.result, done);
+      reader.onload = () => app.ink.open(reader.result);
       reader.readAsDataURL(file);
     }
   },

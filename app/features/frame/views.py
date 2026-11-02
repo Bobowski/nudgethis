@@ -28,6 +28,23 @@ CLOSE_ICON = svg.Svg(
     svg.Path({"d": "M7 7l10 10M17 7 7 17"}),
 )
 
+
+def icon(d: str) -> HtmlElement:
+    return svg.Svg(
+        {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"}, svg.Path({"d": d})
+    )
+
+
+INK_TOOLS = (
+    ("marker", "Draw", icon("M4 20l4-1 10.5-10.5-3-3L5 16zM14 7l3 3")),
+    ("arrow", "Arrow", icon("M5 19 19 5M10 5h9v9")),
+    ("ring", "Circle", icon("M12 4.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 1 0 0-15")),
+    ("box", "Box", icon("M4.5 6.5h15v11h-15z")),
+    ("text", "Text", icon("M6 6.5h12M12 6.5V19")),
+)
+UNDO_ICON = icon("M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11")
+ATTACH_ICON = icon("M5 12.5l4.5 4.5L19 7")
+
 SEND_ICON = svg.Svg(
     {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
     svg.Path({"d": "M12 19V5M6 11l6-6 6 6"}),
@@ -133,7 +150,7 @@ def composer(name: str, docked: bool) -> HtmlElement:
                 {"type": "button", "class": "round snap", "aria-label": "Snap"},
                 data.on(
                     "click",
-                    "app.snap.go(v => $shots = v, h => $_hint = h)",
+                    "app.snap.go(h => $_hint = h)",
                 ),
                 data.attr("disabled", "$_sending"),
                 SNAP_ICON,
@@ -167,7 +184,7 @@ def composer(name: str, docked: bool) -> HtmlElement:
             data.init("app.snap.input(el)"),
             data.on(
                 "change",
-                "app.snap.pick(evt, v => $shots = v); $_hint = ''",
+                "app.snap.pick(evt); $_hint = ''",
             ),
         )
         if docked
@@ -332,8 +349,7 @@ def render(
                     ),
                     data.on(
                         "pill-hold",
-                        "app.snap.go(v => ($shots = v, $_compose = true),"
-                        " h => ($_hint = h, $_compose = true))",
+                        "app.snap.go(h => ($_hint = h, $_compose = true))",
                     ),
                     data.on(
                         "blur",
@@ -388,34 +404,101 @@ def render(
                     ),
                     composer(name, docked=True),
                 ),
+                h.Button(
+                    {"type": "button", "class": "scrim", "aria-label": "Back to the app"},
+                    data.show("$_history !== ''"),
+                    data.on("click", "$_history = ''"),
+                ),
             ),
             h.Div(
                 {"id": "ink", "class": "ink"},
                 data.ignore_morph(),
                 data.init("app.ink.mount(el)"),
-                h.Canvas({"class": "inkcanvas"}),
                 h.Div(
-                    {"class": "glass inktools"},
-                    *[
+                    {"class": "inkstage"},
+                    h.Canvas({"class": "inkcanvas"}),
+                    h.Input(
+                        {
+                            "class": "inktext",
+                            "hidden": True,
+                            "maxlength": 80,
+                            "placeholder": "Type…",
+                            "aria-label": "text on the snap",
+                        }
+                    ),
+                ),
+                h.Form(
+                    {"class": "glass inkbar"},
+                    data.on(
+                        "submit",
+                        "$shots = app.ink.take(); "
+                        + at.post(SAY.href(name), include=["tab", "text", "shots"]),
+                        prevent=True,
+                    ),
+                    data.indicator("_sending"),
+                    h.Div(
+                        {"class": "inktools"},
                         h.Button(
-                            {"type": "button", "data-tool": tool},
-                            data.on("click", f"app.ink.tool('{tool}')"),
-                            label,
-                        )
-                        for tool, label in (
-                            ("marker", "Draw"),
-                            ("arrow", "Arrow"),
-                            ("ring", "Circle"),
-                            ("box", "Box"),
-                            ("text", "Text"),
-                        )
-                    ],
-                    h.Button({"type": "button"}, data.on("click", "app.ink.undo()"), "Undo"),
-                    h.Button({"type": "button"}, data.on("click", "app.ink.cancel()"), "Cancel"),
-                    h.Button(
-                        {"type": "button", "class": "done"},
-                        data.on("click", "app.ink.done()"),
-                        "Done",
+                            {"type": "button", "class": "round", "aria-label": "Cancel"},
+                            data.on("click", "app.ink.cancel()"),
+                            CLOSE_ICON,
+                        ),
+                        *[
+                            h.Button(
+                                {
+                                    "type": "button",
+                                    "class": "round",
+                                    "data-tool": tool,
+                                    "aria-label": label,
+                                    "title": label,
+                                },
+                                data.on("click", f"app.ink.tool('{tool}')"),
+                                glyph,
+                            )
+                            for tool, label, glyph in INK_TOOLS
+                        ],
+                        h.Button(
+                            {
+                                "type": "button",
+                                "class": "round",
+                                "aria-label": "Undo",
+                                "title": "Undo",
+                            },
+                            data.on("click", "app.ink.undo()"),
+                            UNDO_ICON,
+                        ),
+                    ),
+                    h.Div(
+                        {"class": "inkmsg"},
+                        h.Textarea(
+                            {
+                                "rows": "1",
+                                "maxlength": 2000,
+                                "placeholder": "Say what to change…",
+                                "aria-label": "message",
+                            },
+                            data.bind("text"),
+                            data.on(
+                                "keydown",
+                                "evt.key === 'Enter' && !evt.shiftKey"
+                                " && (evt.preventDefault(), el.form.requestSubmit())",
+                            ),
+                        ),
+                        h.Button(
+                            {
+                                "type": "button",
+                                "class": "round",
+                                "aria-label": "Attach to the message",
+                                "title": "Attach to the message",
+                            },
+                            data.on("click", "$shots = app.ink.take(); $_compose = true"),
+                            ATTACH_ICON,
+                        ),
+                        h.Button(
+                            {"type": "submit", "class": "round send", "aria-label": "Send"},
+                            data.attr("disabled", "$_sending"),
+                            SEND_ICON,
+                        ),
                     ),
                 ),
             ),
