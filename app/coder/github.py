@@ -13,12 +13,15 @@ NAMED = ("pyproject.toml", "app/config.py", "uv.lock")
 
 
 async def call(http: httpx.AsyncClient, token: str, method: str, path: str, body=None) -> Any:
-    r = await http.request(
-        method,
-        API + path,
-        json=body,
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-    )
+    try:
+        r = await http.request(
+            method,
+            API + path,
+            json=body,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+        )
+    except httpx.HTTPError as exc:
+        raise CoderError(f"GitHub did not answer: {exc}") from exc
     if r.status_code >= 400:
         raise CoderError(f"GitHub answered {r.status_code}: {r.text[:200]}")
     return r.json()

@@ -27,9 +27,12 @@ class Cursor:
     model: str = ""
 
     async def call(self, method: str, path: str, body: dict | None = None) -> Any:
-        r = await self.http.request(
-            method, API + path, json=body, headers={"Authorization": f"Bearer {self.key}"}
-        )
+        try:
+            r = await self.http.request(
+                method, API + path, json=body, headers={"Authorization": f"Bearer {self.key}"}
+            )
+        except httpx.HTTPError as exc:
+            raise CoderError(f"Cursor did not answer: {exc}") from exc
         if r.status_code >= 400:
             raise CoderError(f"Cursor answered {r.status_code}: {r.text[:200]}")
         return r.json()

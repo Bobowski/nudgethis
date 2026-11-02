@@ -20,14 +20,17 @@ class Yard:
     async def call(
         self, method: str, path: str, body: dict | bytes | None = None, *, missing_ok: bool = False
     ) -> Any:
-        r = await self.http.request(
-            method,
-            f"{self.url}/api/v1{path}",
-            json=body if isinstance(body, dict) else None,
-            content=body if isinstance(body, bytes) else None,
-            headers={"Authorization": f"Bearer {self.token}"}
-            | ({"content-type": "text/caddyfile"} if isinstance(body, bytes) else {}),
-        )
+        try:
+            r = await self.http.request(
+                method,
+                f"{self.url}/api/v1{path}",
+                json=body if isinstance(body, dict) else None,
+                content=body if isinstance(body, bytes) else None,
+                headers={"Authorization": f"Bearer {self.token}"}
+                | ({"content-type": "text/caddyfile"} if isinstance(body, bytes) else {}),
+            )
+        except httpx.HTTPError as exc:
+            raise CoderError(f"Yard at {self.url} did not answer: {exc}") from exc
         if r.status_code == 404 and missing_ok:
             return {}
         if r.status_code >= 400:
