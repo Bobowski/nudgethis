@@ -6,6 +6,7 @@ from stario import App, Span, serve
 from stario.http import same_origin, security_headers
 
 from app.assets import ASSETS
+from app.coder import CoderError
 from app.coder.cursor import Cursor
 from app.coder.yard import Yard
 from app.common.session import Session
@@ -44,13 +45,14 @@ async def bootstrap(app: App, span: Span):
         agent,
         AsyncClient(timeout=30) as http,
     ):
-        cursor = (
-            Cursor(http, config.cursor_api_key, config.cursor_model, config.cursor_params)
-            if coder == "cursor"
-            else None
-        )
+        cursor = Cursor(http, config.cursor_api_key) if coder == "cursor" else None
+        try:
+            models = await cursor.models() if cursor else ()
+        except CoderError as exc:
+            models = ()
+            span.attrs({"cursor.models_error": str(exc)})
         yard = Yard(http, config.yard_url, config.yard_token) if config.yard_token else None
-        frame = FramePage(db, config, agent, model_name, instructions, cursor, yard)
+        frame = FramePage(db, config, agent, model_name, instructions, cursor, yard, models)
         HomePage(db, config, http, yard, signed_in).register(app)
         google = Google(http, config.google_client_id, config.google_client_secret)
         AuthPage(session, google, config.allowed_emails, config.public_url).register(app)

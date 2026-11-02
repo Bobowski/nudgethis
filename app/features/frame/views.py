@@ -1,10 +1,12 @@
 from stario import h
 from stario.datastar import at, data
+from stario.datastar.format import string_literal
 from stario.markup import HtmlElement, svg
 
+from app.coder.cursor import Model
 from app.common.shell import INK_LOOP, page
 from app.features.frame.data import Message
-from app.features.frame.urls import FRAME_LIVE, SAY, UNDO
+from app.features.frame.urls import CODER, CODER_LIVE, FRAME_LIVE, SAY, UNDO
 from app.features.home.urls import HOME
 from app.features.shots.urls import SHOT
 
@@ -192,6 +194,96 @@ def composer(name: str, docked: bool) -> HtmlElement:
     )
 
 
+VENDORS = (
+    ("Cursor", ("default", "composer")),
+    ("xAI", ("grok",)),
+    ("Anthropic", ("claude",)),
+    ("OpenAI", ("gpt",)),
+    ("Google", ("gemini",)),
+)
+
+
+def coder_panel(
+    name: str, models: tuple[Model, ...], model_id: str, params: dict[str, str], live: bool
+) -> HtmlElement:
+    """The Coder tab: where each change runs, on which model, with which params."""
+    model = next((m for m in models if m.id == model_id), None)
+    post = at.post(CODER.href(name), include=["tab", "coder_set"])
+
+    def group(prefixes: tuple[str, ...] | None) -> list[Model]:
+        known = tuple(p for _, ps in VENDORS for p in ps)
+        return [
+            m
+            for m in models
+            if (m.id.startswith(prefixes) if prefixes else not m.id.startswith(known))
+        ]
+
+    return h.Div(
+        {"id": "coder", "class": "coder"},
+        data.show("$_history === 'coder'"),
+        data.init(at.get(CODER_LIVE.href(name), retry="always")),
+        h.P(
+            {"class": "lead"},
+            "Each change runs on a Cursor Cloud Agent, which pushes to main."
+            if live
+            else "The coder is fake. Set CURSOR_API_KEY to run on Cursor.",
+        ),
+        h.Label(
+            {"class": "setting"},
+            h.Span({"class": "name"}, "Model"),
+            h.Select(
+                {"class": "glass picker", "aria-label": "model"},
+                data.on("change", "$coder_set = 'model=' + el.value; " + post),
+                *[
+                    h.Optgroup(
+                        {"label": vendor},
+                        *[
+                            h.Option(
+                                {"value": m.id, **({"selected": True} if m.id == model_id else {})},
+                                m.label,
+                            )
+                            for m in members
+                        ],
+                    )
+                    for vendor, members in [
+                        *((v, group(ps)) for v, ps in VENDORS),
+                        ("Other", group(None)),
+                    ]
+                    if members
+                ],
+            ),
+        )
+        if live and models
+        else h.P({"class": "dim"}, f"Model: {model_id or 'Auto'}"),
+        *[
+            h.Div(
+                {"class": "setting"},
+                h.Span({"class": "name"}, p.label),
+                h.Div(
+                    {"class": "glass seg", "role": "group", "aria-label": p.label},
+                    *[
+                        h.Button(
+                            {
+                                "type": "button",
+                                **({"class": "on"} if params.get(p.id) == v else {}),
+                            },
+                            data.on(
+                                "click", f"$coder_set = {string_literal(f'{p.id}={v}')}; " + post
+                            ),
+                            label,
+                        )
+                        for v, label in p.values
+                    ],
+                ),
+            )
+            for p in (model.params if model and live else ())
+        ],
+        h.P({"class": "maxmode"}, "Max Mode: each run costs more.")
+        if model and model.is_max(params)
+        else None,
+    )
+
+
 def render(
     messages: list[Message],
     name: str,
@@ -200,6 +292,7 @@ def render(
     phase: str,
     rev: int,
     tab: str,
+    coder: HtmlElement,
 ) -> HtmlElement:
     here = [m for m in messages if m.app == name]
     replies = [m for m in here if m.role == "nudge" and not m.thinking]
@@ -231,6 +324,7 @@ def render(
                     "text": "",
                     "shots": [],
                     "change_id": 0,
+                    "coder_set": "",
                     "_rev": rev,
                     "_dock": "top",
                     "_seen": 0,
@@ -272,7 +366,11 @@ def render(
                             data.on("click", f"$_history = '{key}'"),
                             label,
                         )
-                        for key, label in (("chat", "Chat"), ("timeline", "Timeline"))
+                        for key, label in (
+                            ("chat", "Chat"),
+                            ("timeline", "Timeline"),
+                            ("coder", "Coder"),
+                        )
                     ],
                 ),
                 h.P({"class": "statusline", "role": "status"}, INK_LOOP, doing) if doing else None,
@@ -310,6 +408,7 @@ def render(
                         or [h.Li({"class": "empty"}, "No changes yet.")]
                     ),
                 ),
+                coder,
                 h.Div(
                     {"class": "chatfoot"},
                     data.show("$_history === 'chat'"),

@@ -14,6 +14,10 @@ just dev
 
 Then open http://127.0.0.1:8000 and pick an app.
 
+## The Coder tab
+
+Swipe the pill left and open Coder. It picks the Cursor model for this app and each of its params (effort, fast, context, and so on), from Cursor's own list of models. A choice that is Max Mode says so. The next change uses it; a change that already runs keeps its model.
+
 ## New apps
 
 The home page lists the apps and has a New app field. A name such as `plants` makes:
@@ -53,7 +57,7 @@ Optional:
 - `NUDGE_HISTORY` — messages sent to the model, default `30`.
 - `NUDGE_TIMEOUT` — seconds per turn, default `60`.
 - `CURSOR_API_KEY` — the Cursor key for Cloud Agents. Empty means the fake coder.
-- `CURSOR_MODEL` — a Cursor model id, with optional params: `grok-4.7:context=256k,reasoning_effort=high,fast=false`. `GET https://api.cursor.com/v1/models` lists the ids and params. Empty means Cursor's Auto. A model without params runs its default variant, which can be Max Mode.
+- `CURSOR_MODEL` — the default for apps that have no choice in the Coder tab. A Cursor model id, with optional params: `grok-4.7:context=256k,reasoning_effort=high,fast=false`. `GET https://api.cursor.com/v1/models` lists the ids and params. Empty means Cursor's Auto. A model without params runs its default variant, which can be Max Mode.
 - `NUDGE_REPO_BASE` — the repo of an app is `<base>/<name>`. Default `https://github.com/Bobowski`.
 - `NUDGE_DOMAIN` — new apps live on `<name>.<domain>`, default `wrati.dev`. `NUDGE_TEMPLATE` — the template repo, default `https://github.com/Bobowski/nudge-template`.
 - `YARD_URL` — default `http://yard-app-1:8000`, Yard's container on the `yard` podman network: an app on the Yard VM cannot reach the public address. On a laptop, set `https://yard.bobowski.dev`. `YARD_TOKEN` — a Yard token (`yard token new`). Without it, a change is live when the run ends, not when the deploy ends.
