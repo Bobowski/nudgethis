@@ -7,7 +7,7 @@ from stario.http import same_origin, security_headers
 
 from app.assets import ASSETS
 from app.coder.cursor import Cursor
-from app.coder.github import GitHub
+from app.coder.yard import Yard
 from app.common.session import Session
 from app.config import Config
 from app.features.auth.handlers import AuthPage
@@ -48,7 +48,7 @@ async def bootstrap(app: App, span: Span):
             model_name,
             instructions,
             cursor,
-            GitHub(http, config.github_token),
+            Yard(http, config.yard_url, config.yard_token) if config.yard_token else None,
         )
         HomePage(config.apps, signed_in).register(app)
         google = Google(http, config.google_client_id, config.google_client_secret)

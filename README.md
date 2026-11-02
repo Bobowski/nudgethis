@@ -1,8 +1,8 @@
 # nudgethis
 
-A frame around a live web app. The app runs full-size in an iframe. Beside it is the pod: one conversation with an agent called Nudge. Snap a screenshot of the app, draw on it, say what you want, and Nudge changes the code; "Ship" reloads the frame.
+A frame around a live web app. The app runs full-size in an iframe. Beside it is the pod: one conversation with an agent called Nudge. Snap a screenshot of the app, draw on it, say what you want, and Nudge changes the code. The frame reloads when the change is live.
 
-Nudge is a real model (OpenAI via pydantic-ai, Responses API). The coder is a Cursor Cloud Agent: it works on the app's repo and opens a pull request. "Ship" merges that pull request; "Not yet" closes it. Without `CURSOR_API_KEY`, a fake coder marks a change ready after `NUDGE_FAKE_DELAY`.
+Nudge is a real model (OpenAI via pydantic-ai, Responses API). The coder is a Cursor Cloud Agent: it works on the app's repo and pushes straight to `main`. Yard deploys the push. With `YARD_TOKEN`, nudgethis waits for that deploy, then the change is live and the frame reloads. "Undo" asks the same agent to push a revert. Without `CURSOR_API_KEY`, a fake coder makes a change live after `NUDGE_FAKE_DELAY`.
 
 Every page needs a Google sign-in, and only the emails in `NUDGE_ALLOWED_EMAILS` get in. The apps that nudgethis frames are not behind this sign-in.
 
@@ -19,7 +19,7 @@ Then open http://127.0.0.1:8000 and pick an app.
 1. In `.env`, set `CURSOR_API_KEY` and `NUDGE_APPS` for an app that has a repo `Bobowski/<name>`.
 2. Run `just dev` and open http://127.0.0.1:8000/a/<name>.
 
-The frame shows the live app. A change is a pull request on GitHub: read it there before you ship. "Ship" merges it, and Yard deploys `main`. The frame reloads at the merge, which is before the deploy ends: reload again after the deploy. Waiting for Yard's deploy is the next step.
+The frame shows the live app. A change goes to `main` and to production with no review step: "Undo" is the way back.
 
 ## Config
 
@@ -44,7 +44,7 @@ Optional:
 - `CURSOR_API_KEY` — the Cursor key for Cloud Agents. Empty means the fake coder.
 - `CURSOR_MODEL` — optional Cursor model id. Empty means Cursor's default.
 - `NUDGE_REPO_BASE` — the repo of an app is `<base>/<name>`. Default `https://github.com/Bobowski`.
-- `GITHUB_TOKEN` — merges and closes the pull requests. `just dev` takes `gh auth token` when it is not set.
+- `YARD_URL` — default `https://yard.bobowski.dev`. `YARD_TOKEN` — a Yard token (`yard token new`). Without it, a change is live when the run ends, not when the deploy ends.
 - `PROJECT_DATA_DIR` — data directory (`nudgethis.sqlite3`, `shots/`). Default `./data`.
 
 `just smoke` runs three turns against the real model (needs `OPENAI_API_KEY` in `.env`). The system instructions live in `app/nudge/instructions.md` — the lead owns that text.

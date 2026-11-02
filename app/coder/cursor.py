@@ -1,4 +1,4 @@
-"""Cursor Cloud Agents, API v1: launch one run on a repo, then poll it to the end."""
+"""Cursor Cloud Agents, API v1: a run on a repo pushes to main; poll it to the end."""
 
 import asyncio
 import base64
@@ -18,8 +18,6 @@ DONE = ("FINISHED", "ERROR", "CANCELLED", "EXPIRED")
 class Run:
     status: str
     result: str
-    branch: str
-    pr_url: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,8 +46,7 @@ class Cursor:
                 ],
             },
             "repos": [{"url": repo, "startingRef": "main"}],
-            "autoCreatePR": True,
-            "skipReviewerRequest": True,
+            "workOnCurrentBranch": True,
             "name": name[:100],
         }
         if self.model:
@@ -57,16 +54,15 @@ class Cursor:
         out = await self.call("POST", "/agents", body)
         return out["agent"]["id"], out["run"]["id"]
 
+    async def follow_up(self, agent_id: str, text: str) -> tuple[str, str]:
+        """A new run of the same agent, which remembers what it pushed."""
+        out = await self.call("POST", f"/agents/{agent_id}/runs", {"prompt": {"text": text}})
+        return agent_id, out["run"]["id"]
+
     async def wait(self, agent_id: str, run_id: str) -> Run:
         while True:
             run = await self.call("GET", f"/agents/{agent_id}/runs/{run_id}")
             if run["status"] in DONE:
                 break
             await asyncio.sleep(POLL)
-        branches = (run.get("git") or {}).get("branches") or [{}]
-        return Run(
-            status=run["status"],
-            result=str(run.get("result") or "").strip(),
-            branch=str(branches[-1].get("branch") or ""),
-            pr_url=str(branches[-1].get("prUrl") or ""),
-        )
+        return Run(status=run["status"], result=str(run.get("result") or "").strip())

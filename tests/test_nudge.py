@@ -24,7 +24,7 @@ def answered(messages):
     return isinstance(last, ModelRequest) and any(isinstance(p, ToolReturnPart) for p in last.parts)
 
 
-def script(captured, ship_id=1, note_app_only=False):
+def script(captured, undo_id=1, note_app_only=False):
     def fn(messages, info):
         captured.append((messages, info))
         if answered(messages):
@@ -37,8 +37,8 @@ def script(captured, ship_id=1, note_app_only=False):
                     if isinstance(content, str)
                     else " ".join(c for c in content if isinstance(c, str))
                 )
-                if "ship it" in text:
-                    return ModelResponse(parts=[ToolCallPart("ship", {"change_id": ship_id})])
+                if "undo it" in text:
+                    return ModelResponse(parts=[ToolCallPart("undo", {"change_id": undo_id})])
                 if "note" in text:
                     return ModelResponse(
                         parts=[
@@ -88,33 +88,35 @@ async def test_current_message_carries_the_images(spawn, tmp_path):
     )
 
 
-async def test_ship_tool_ships_a_ready_change(spawn, tmp_path):
+async def test_undo_tool_reverts_a_live_change(spawn, tmp_path):
     captured = []
     async with spawn(script(captured)) as client:
         await say(client, "alpha", "change it")
         await client.drain_tasks()
-        await say(client, "alpha", "ship it")
+        await say(client, "alpha", "undo it")
         await client.drain_tasks()
         page = (await client.get(FRAME.href("alpha"))).text
         assert "done replying" in page
-        assert ">Ship<" not in page
-        assert "Live." not in page
-    rows = db_rows(tmp_path / "nudgethis.sqlite3", "SELECT data FROM changes")
-    assert json.loads(rows[0][0])["status"] == "shipped"
+        assert "Undone. (fake)" in page
+    rows = db_rows(tmp_path / "nudgethis.sqlite3", "SELECT data FROM changes ORDER BY id")
+    first, undo = (json.loads(r[0]) for r in rows)
+    assert first["status"] == "undone"
+    assert undo["status"] == "live"
+    assert undo["undoes"] == 1
 
 
-async def test_ship_tool_refuses_a_missing_change(spawn, tmp_path):
+async def test_undo_tool_refuses_a_missing_change(spawn, tmp_path):
     captured = []
-    async with spawn(script(captured, ship_id=99)) as client:
+    async with spawn(script(captured, undo_id=99)) as client:
         await say(client, "alpha", "change it")
         await client.drain_tasks()
-        await say(client, "alpha", "ship it")
+        await say(client, "alpha", "undo it")
         await client.drain_tasks()
         page = (await client.get(FRAME.href("alpha"))).text
         assert "done replying" in page
-        assert ">Ship<" in page
+        assert 'class="act undo"' in page
     rows = db_rows(tmp_path / "nudgethis.sqlite3", "SELECT data FROM changes")
-    assert json.loads(rows[0][0])["status"] == "ready"
+    assert [json.loads(r[0])["status"] for r in rows] == ["live"]
 
 
 async def test_remember_and_the_context_block(spawn, tmp_path):
