@@ -164,3 +164,17 @@ async def test_an_unreachable_yard_marks_the_app_failed(yard):
         await client.drain_tasks()
         home = (await client.get(HOME.href())).text
         assert "Yard at https://yard.example did not answer" in home
+
+
+async def test_a_failed_app_can_be_made_again(yard):
+    async with yard(Remote(deploy="failed")) as client:
+        await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        await client.drain_tasks()
+    remote = Remote()
+    async with yard(remote) as client:
+        r = await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        assert "exists" not in r.text
+        await client.drain_tasks()
+        home = (await client.get(HOME.href())).text
+        assert 'href="/a/nudge-plants"' in home
+        assert "did not go live" not in home
