@@ -21,12 +21,12 @@ from stario import App, Context, Span, Writer
 from stario.datastar import SSE, read_signals
 
 from app.coder import CoderError
-from app.coder.cursor import Cursor
+from app.coder.cursor import Cursor, Model
 from app.coder.yard import Yard
 from app.config import Config
 from app.features.frame import data as store
-from app.features.frame.urls import FRAME, FRAME_LIVE, SAY, UNDO
-from app.features.frame.views import render
+from app.features.frame.urls import CODER, CODER_LIVE, FRAME, FRAME_LIVE, SAY, UNDO
+from app.features.frame.views import coder_panel, render
 from app.features.home import data as apps
 from app.nudge import agent as nudge
 from app.nudge import data as nudge_data
@@ -88,12 +88,15 @@ class FramePage:
     instructions: str
     cursor: Cursor | None
     yard: Yard | None
+    models: tuple[Model, ...]
 
     def register(self, app: App) -> None:
         app.add(FRAME, self.show)
         app.add(FRAME_LIVE, self.live)
         app.add(SAY, self.say)
         app.add(UNDO, self.undo_command)
+        app.add(CODER, self.set_coder)
+        app.add(CODER_LIVE, self.coder_live)
 
     def url_of(self, name: str) -> str | None:
         """An app from NUDGE_APPS, or one that nudgethis made and Yard deployed."""
@@ -101,6 +104,18 @@ class FramePage:
         return dict(self.config.apps).get(name) or (
             made[0] if made and made[1] == "ready" else None
         )
+
+    def coder_of(self, name: str) -> tuple[str, dict[str, str]]:
+        """The app's own model and params, or CURSOR_MODEL; params checked against the model."""
+        model_id, params = store.get_coder(self.db, name) or (
+            self.config.cursor_model,
+            dict(self.config.cursor_params),
+        )
+        model = next((m for m in self.models if m.id == model_id), None)
+        return model_id, model.settle(params) if model else params
+
+    def coder(self, name: str):
+        return coder_panel(name, self.models, *self.coder_of(name), self.cursor is not None)
 
     def resume(self, app: App, span: Span) -> None:
         """Follow the Cursor runs and deploys that were going when the process stopped."""
@@ -121,6 +136,7 @@ class FramePage:
             store.get_phase(self.db, name),
             store.live_rev(self.db, name),
             tab,
+            self.coder(name),
         )
 
     async def show(self, c: Context, w: Writer) -> None:
@@ -153,6 +169,7 @@ class FramePage:
                         store.get_phase(self.db, name),
                         store.live_rev(self.db, name),
                         tab,
+                        self.coder(name),
                     )
                 )
                 sse.patch_signals({"_rev": store.live_rev(self.db, name)})
@@ -314,8 +331,13 @@ class FramePage:
                 + " Keep the change small, run `just check`, and push to main."
             )
             cursor, repo = self.cursor, f"{self.config.repo_base}/{name}"
+            model, params = self.coder_of(name)
+            span.attrs({"cursor.model": model, "cursor.params": str(params)})
             await self.launch(
-                change_id, name, span, lambda: cursor.start(repo, prompt, images, brief)
+                change_id,
+                name,
+                span,
+                lambda: cursor.start(repo, prompt, images, brief, model, params),
             )
 
     async def fake(self, change_id: int, name: str, text: str) -> None:
@@ -423,3 +445,42 @@ class FramePage:
             return
         w.empty()
         await self.start_undo(c.app, change_id, name, c.span)
+
+    async def set_coder(self, c: Context, w: Writer) -> None:
+        """One choice in the Coder tab: `model=<id>` or `<param>=<value>`."""
+        name = c.match.params["app"]
+        if self.url_of(name) is None:
+            w.text("no such app", status=404)
+            return
+        signals = await read_signals(c.req)
+        tab = str(signals.get("tab", ""))
+        key, _, value = str(signals.get("coder_set", "")).partition("=")
+        if not tab.isalnum() or len(tab) > 32:
+            w.text("tab must be a short id", status=400)
+            return
+        model_id, params = self.coder_of(name)
+        if key == "model":
+            model = next((m for m in self.models if m.id == value), None)
+            if model is None:
+                w.text("no such model", status=400)
+                return
+            model_id, params = model.id, dict(model.default)
+        else:
+            model = next((m for m in self.models if m.id == model_id), None)
+            param = next((p for p in model.params if p.id == key), None) if model else None
+            if param is None or value not in {v for v, _ in param.values}:
+                w.text("no such setting for this model", status=400)
+                return
+            params = {**params, key: value}
+        w.empty()
+        await self.db.write(store.set_coder, name, model_id, params)
+
+    async def coder_live(self, c: Context, w: Writer) -> None:
+        name = c.match.params["app"]
+        if self.url_of(name) is None:
+            w.text("no such app", status=404)
+            return
+        sse = SSE(w)
+        async with self.db.watch(store.CODER_SQL, app=name) as rows:
+            async for _ in c.alive(rows):
+                sse.patch_elements(self.coder(name))

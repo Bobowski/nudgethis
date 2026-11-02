@@ -63,6 +63,7 @@ def schema(tx: Tx) -> None:
         ("messages", MESSAGE_COLUMNS),
         ("changes", CHANGE_COLUMNS),
         ("notes", {}),
+        ("coders", {"app": "TEXT AS (data->>'app')"}),
     ):
         tx.execute(
             f"CREATE TABLE IF NOT EXISTS {table} ("
@@ -75,6 +76,7 @@ def schema(tx: Tx) -> None:
     tx.execute("CREATE INDEX IF NOT EXISTS messages_app ON messages(app)")
     tx.execute("CREATE INDEX IF NOT EXISTS messages_at ON messages(at)")
     tx.execute("CREATE INDEX IF NOT EXISTS changes_app_status ON changes(app, status)")
+    tx.execute("CREATE UNIQUE INDEX IF NOT EXISTS coders_app ON coders(app)")
     # A fake job dies with the process, so its change is dropped. A Cursor run
     # goes on in the cloud: bootstrap follows it again. A reply left thinking
     # admits it was lost.
@@ -116,6 +118,23 @@ def get_phase(db: LiteWriter, app: str) -> str:
         )
     }
     return next((s for s in ("deploying", "working") if s in statuses), "")
+
+
+# The coder of one app: model id and params (JSON). No row means CURSOR_MODEL.
+CODER_SQL = "SELECT data->>'model', data->>'params' FROM coders WHERE app = :app"
+
+
+def get_coder(db: LiteWriter, app: str) -> tuple[str, dict[str, str]] | None:
+    row = db.one(CODER_SQL, app=app)
+    return (row[0], cast(dict[str, str], loads(row[1]))) if row else None
+
+
+def set_coder(tx: Tx, app: str, model: str, params: dict[str, str]) -> None:
+    tx.execute("DELETE FROM coders WHERE app = :app", app=app)
+    tx.execute(
+        "INSERT INTO coders (data) VALUES (:data)",
+        data=dumps({"app": app, "model": model, "params": params}),
+    )
 
 
 def list_timeline(db: LiteWriter, app: str) -> list[tuple]:

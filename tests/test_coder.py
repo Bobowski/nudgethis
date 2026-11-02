@@ -5,12 +5,59 @@ import httpx
 import pytest
 from stario.testing import TestClient
 
-from app.features.frame.urls import FRAME, SAY, UNDO
+from app.features.frame.urls import CODER, CODER_LIVE, FRAME, SAY, UNDO
 from app.main import bootstrap
 from tests.conftest import _env, signed_in, use_transport
 from tests.test_frame import PNG
 
 YARD = "https://yard.example"
+
+
+def variant(context: str, effort: str, fast: str, **flags) -> dict:
+    params = [("context", context), ("reasoning_effort", effort), ("fast", fast)]
+    return {"params": [{"id": k, "value": v} for k, v in params], **flags}
+
+
+MODELS = [
+    {"id": "default", "displayName": "Auto", "variants": [{"params": [], "isDefault": True}]},
+    {
+        "id": "grok-4.7",
+        "displayName": "Grok 4.7",
+        "parameters": [
+            {
+                "id": "context",
+                "displayName": "Context",
+                "values": [{"value": "256k"}, {"value": "500k"}],
+            },
+            {
+                "id": "reasoning_effort",
+                "displayName": "Effort",
+                "values": [
+                    {"value": "low", "displayName": "Low"},
+                    {"value": "high", "displayName": "High"},
+                ],
+            },
+            {
+                "id": "fast",
+                "displayName": "Fast",
+                "values": [{"value": "false"}, {"value": "true", "displayName": "Fast\u200b"}],
+            },
+        ],
+        "variants": [
+            variant("256k", "high", "false"),
+            variant("256k", "low", "false"),
+            variant("500k", "high", "true", isDefault=True, isMaxMode=True),
+        ],
+    },
+    {
+        "id": "composer-2.5",
+        "displayName": "Composer 2.5",
+        "parameters": [
+            {"id": "fast", "displayName": "Fast", "values": [{"value": "false"}, {"value": "true"}]}
+        ],
+        "variants": [{"params": [{"id": "fast", "value": "true"}], "isDefault": True}],
+    },
+]
 
 
 class Remote:
@@ -38,6 +85,8 @@ class Remote:
             if self.polls[run_id] == 2 and self.run == "FINISHED":
                 self.pushes += 1
             return httpx.Response(200, json={"status": self.run, "result": f"Did {run_id}."})
+        if url == "https://api.cursor.com/v1/models":
+            return httpx.Response(200, json={"items": MODELS})
         if url == f"{YARD}/api/v1/apps/alpha/deploy":
             assert request.headers["authorization"] == "Bearer yard-token"
             status = "ok" if self.pushes == 0 else self.deploy
@@ -153,3 +202,62 @@ def test_a_bad_cursor_model_stops_the_config():
     assert parse_cursor_model("composer-2.5") == ("composer-2.5", ())
     with pytest.raises(ValueError):
         parse_cursor_model("grok-4.7:context")
+
+
+async def test_the_coder_tab_offers_cursors_models_and_the_default_params(cursor, monkeypatch):
+    monkeypatch.setenv("CURSOR_MODEL", "grok-4.7")
+    async with cursor(Remote()) as client:
+        page = (await client.get(FRAME.href("alpha"))).text
+    assert '<option value="grok-4.7" selected>Grok 4.7</option>' in page
+    assert '<optgroup label="Cursor">' in page
+    assert ">256k<" in page and ">On<" in page and ">Off<" in page
+    # The default variant of Grok 4.7 is Max Mode; the tab starts on the normal one.
+    assert "Max Mode" not in page
+
+
+async def test_picking_a_model_and_a_param_changes_the_next_run(cursor):
+    remote = Remote()
+    async with cursor(remote) as client:
+        for choice in ("model=grok-4.7", "reasoning_effort=low"):
+            r = await client.post(CODER.href("alpha"), json={"tab": "t1", "coder_set": choice})
+            assert r.status_code == 204
+        await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
+        await client.drain_tasks()
+    (launch,) = remote.sent("POST", "https://api.cursor.com/v1/agents")
+    assert launch["model"] == {
+        "id": "grok-4.7",
+        "params": [
+            {"id": "context", "value": "256k"},
+            {"id": "reasoning_effort", "value": "low"},
+            {"id": "fast", "value": "false"},
+        ],
+    }
+
+
+async def test_a_max_mode_choice_says_so(cursor):
+    async with cursor(Remote()) as client:
+        for choice in ("model=grok-4.7", "context=500k", "fast=true"):
+            await client.post(CODER.href("alpha"), json={"tab": "t1", "coder_set": choice})
+        assert "Max Mode" in (await client.get(FRAME.href("alpha"))).text
+
+
+async def test_bad_coder_choices_are_400(cursor):
+    async with cursor(Remote()) as client:
+        await client.post(
+            CODER.href("alpha"), json={"tab": "t1", "coder_set": "model=composer-2.5"}
+        )
+        for choice in ("model=nope", "reasoning_effort=low", "fast=maybe", "junk"):
+            r = await client.post(CODER.href("alpha"), json={"tab": "t1", "coder_set": choice})
+            assert r.status_code == 400, choice
+
+
+async def test_the_coder_stream_repaints_after_a_choice(cursor):
+    async with cursor(Remote()) as client:
+        async with client.stream("GET", CODER_LIVE.href("alpha"), timeout=2) as live:
+            events = live.iter_events()
+            await anext(events)
+            await client.post(
+                CODER.href("alpha"), json={"tab": "t1", "coder_set": "model=composer-2.5"}
+            )
+            event = await anext(events)
+            assert '<option value="composer-2.5" selected>' in event["data"]
