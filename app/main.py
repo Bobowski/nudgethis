@@ -45,7 +45,9 @@ async def bootstrap(app: App, span: Span):
         AsyncClient(timeout=30) as http,
     ):
         cursor = (
-            Cursor(http, config.cursor_api_key, config.cursor_model) if coder == "cursor" else None
+            Cursor(http, config.cursor_api_key, config.cursor_model, config.cursor_params)
+            if coder == "cursor"
+            else None
         )
         yard = Yard(http, config.yard_url, config.yard_token) if config.yard_token else None
         frame = FramePage(db, config, agent, model_name, instructions, cursor, yard)

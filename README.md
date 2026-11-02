@@ -53,7 +53,7 @@ Optional:
 - `NUDGE_HISTORY` — messages sent to the model, default `30`.
 - `NUDGE_TIMEOUT` — seconds per turn, default `60`.
 - `CURSOR_API_KEY` — the Cursor key for Cloud Agents. Empty means the fake coder.
-- `CURSOR_MODEL` — optional Cursor model id. Empty means Cursor's default.
+- `CURSOR_MODEL` — a Cursor model id, with optional params: `grok-4.7:context=256k,reasoning_effort=high,fast=false`. `GET https://api.cursor.com/v1/models` lists the ids and params. Empty means Cursor's Auto. A model without params runs its default variant, which can be Max Mode.
 - `NUDGE_REPO_BASE` — the repo of an app is `<base>/<name>`. Default `https://github.com/Bobowski`.
 - `NUDGE_DOMAIN` — new apps live on `<name>.<domain>`, default `wrati.dev`. `NUDGE_TEMPLATE` — the template repo, default `https://github.com/Bobowski/nudge-template`.
 - `YARD_URL` — default `http://yard-app-1:8000`, Yard's container on the `yard` podman network: an app on the Yard VM cannot reach the public address. On a laptop, set `https://yard.bobowski.dev`. `YARD_TOKEN` — a Yard token (`yard token new`). Without it, a change is live when the run ends, not when the deploy ends.

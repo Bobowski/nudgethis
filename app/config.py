@@ -21,6 +21,17 @@ def parse_apps(raw: str) -> tuple[tuple[str, str], ...]:
 
 
 EFFORTS = ("none", "low", "medium", "high")
+CURSOR_MODEL = re.compile(r"[a-z0-9][a-z0-9.-]*(:[a-z_]+=[a-z0-9.]+(,[a-z_]+=[a-z0-9.]+)*)?")
+
+
+def parse_cursor_model(raw: str) -> tuple[str, tuple[tuple[str, str], ...]]:
+    """`grok-4.7:context=256k,reasoning_effort=high`: the model id and its params."""
+    if raw and not CURSOR_MODEL.fullmatch(raw):
+        raise ValueError(f"CURSOR_MODEL must be id or id:key=value,key=value: {raw!r}")
+    model, _, params = raw.partition(":")
+    return model, tuple(
+        (key, value) for key, _, value in (p.partition("=") for p in params.split(",") if p)
+    )
 
 
 def require_env(key: str) -> str:
@@ -45,6 +56,7 @@ class Config:
     timeout: float
     cursor_api_key: str
     cursor_model: str
+    cursor_params: tuple[tuple[str, str], ...]
     repo_base: str
     yard_url: str
     domain: str
@@ -66,7 +78,10 @@ class Config:
         effort = os.environ.get("NUDGE_EFFORT", "low").strip()
         if effort not in EFFORTS:
             raise ValueError(f"NUDGE_EFFORT must be one of {EFFORTS}: {effort!r}")
+        cursor_model, cursor_params = parse_cursor_model(os.environ.get("CURSOR_MODEL", "").strip())
         return cls(
+            cursor_model=cursor_model,
+            cursor_params=cursor_params,
             apps=parse_apps(os.environ.get("NUDGE_APPS", "stario-site=https://stario.dev")),
             fake_delay=float(os.environ.get("NUDGE_FAKE_DELAY", "4")),
             data_dir=data_dir,
@@ -79,7 +94,6 @@ class Config:
             history=int(os.environ.get("NUDGE_HISTORY", "30")),
             timeout=float(os.environ.get("NUDGE_TIMEOUT", "60")),
             cursor_api_key=os.environ.get("CURSOR_API_KEY", "").strip(),
-            cursor_model=os.environ.get("CURSOR_MODEL", "").strip(),
             repo_base=os.environ.get("NUDGE_REPO_BASE", "https://github.com/Bobowski").rstrip("/"),
             # Yard's own container on the `yard` podman network: an app on the Yard host
             # cannot reach the host's public address.

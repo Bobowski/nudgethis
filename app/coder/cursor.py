@@ -25,6 +25,7 @@ class Cursor:
     http: httpx.AsyncClient
     key: str
     model: str = ""
+    params: tuple[tuple[str, str], ...] = ()
 
     async def call(self, method: str, path: str, body: dict | None = None) -> Any:
         try:
@@ -53,7 +54,10 @@ class Cursor:
             "name": name[:100],
         }
         if self.model:
-            body["model"] = {"id": self.model}
+            body["model"] = {
+                "id": self.model,
+                "params": [{"id": key, "value": value} for key, value in self.params],
+            }
         out = await self.call("POST", "/agents", body)
         return out["agent"]["id"], out["run"]["id"]
 
