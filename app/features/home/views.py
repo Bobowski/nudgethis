@@ -1,8 +1,10 @@
 from stario import h
+from stario.datastar import at, data
 from stario.markup import HtmlElement
 
 from app.common.shell import page
 from app.features.frame.urls import FRAME
+from app.features.signin.urls import SIGNOUT
 
 
 def render(apps: tuple[tuple[str, str], ...]) -> HtmlElement:
@@ -22,5 +24,10 @@ def render(apps: tuple[tuple[str, str], ...]) -> HtmlElement:
             )
             if apps
             else h.P("No apps configured. Set NUDGE_APPS."),
+            h.Button(
+                {"type": "button", "class": "signout"},
+                data.on("click", at.post(SIGNOUT.href())),
+                "Sign out",
+            ),
         ),
     )

@@ -23,6 +23,13 @@ def parse_apps(raw: str) -> tuple[tuple[str, str], ...]:
 EFFORTS = ("none", "low", "medium", "high")
 
 
+def require_env(key: str) -> str:
+    value = os.environ.get(key, "").strip()
+    if not value:
+        raise ValueError(f"{key} must be set: nudgethis does not run without sign-in")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     apps: tuple[tuple[str, str], ...]
@@ -40,6 +47,11 @@ class Config:
     cursor_model: str
     repo_base: str
     github_token: str
+    google_client_id: str
+    google_client_secret: str
+    session_secret: bytes
+    allowed_emails: frozenset[str]
+    public_url: str
 
     @classmethod
     def from_env(cls) -> Config:
@@ -67,4 +79,13 @@ class Config:
             cursor_model=os.environ.get("CURSOR_MODEL", "").strip(),
             repo_base=os.environ.get("NUDGE_REPO_BASE", "https://github.com/Bobowski").rstrip("/"),
             github_token=os.environ.get("GITHUB_TOKEN", "").strip(),
+            google_client_id=require_env("GOOGLE_CLIENT_ID"),
+            google_client_secret=require_env("GOOGLE_CLIENT_SECRET"),
+            session_secret=require_env("SESSION_SECRET").encode(),
+            allowed_emails=frozenset(
+                e.strip().lower()
+                for e in require_env("NUDGE_ALLOWED_EMAILS").split(",")
+                if e.strip()
+            ),
+            public_url=os.environ.get("NUDGE_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/"),
         )
