@@ -34,7 +34,7 @@ class TurnDeps:
     app_name: str
     you_message_id: int
     start_ready: Callable[[int, str], None]
-    settle: Callable[[int, str], Awaitable[str]]
+    undo: Callable[[int], Awaitable[str]]
     called: list[str] = field(default_factory=list)
     change_id: int | None = None
 
@@ -107,16 +107,10 @@ def build_agent(config: Config, *, model: Any = None) -> Agent[TurnDeps, str]:
         return f"change #{change_id} started"
 
     @agent.tool
-    async def ship(ctx: RunContext[TurnDeps], change_id: int) -> str:
-        """Ship a ready change of the open app."""
-        ctx.deps.called.append("ship")
-        return await ctx.deps.settle(change_id, "ship")
-
-    @agent.tool
-    async def drop(ctx: RunContext[TurnDeps], change_id: int) -> str:
-        """Drop a ready change of the open app."""
-        ctx.deps.called.append("drop")
-        return await ctx.deps.settle(change_id, "not_yet")
+    async def undo(ctx: RunContext[TurnDeps], change_id: int) -> str:
+        """Revert a live change of the open app; the coder pushes the revert."""
+        ctx.deps.called.append("undo")
+        return await ctx.deps.undo(change_id)
 
     @agent.tool
     async def remember(ctx: RunContext[TurnDeps], note: str, app_only: bool) -> str:

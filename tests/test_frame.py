@@ -51,8 +51,7 @@ async def test_say_repaints_the_stream(client):
         assert 'class="working"' in html
         assert "On it." in html
         assert "Done." in html
-        assert "Ship" in html
-        assert "Not yet" in html
+        assert 'class="act undo"' in html
 
 
 async def test_empty_say_writes_nothing(client):
@@ -103,24 +102,43 @@ async def done_message_id(client, app="alpha"):
     return int(m.group(1))
 
 
-async def test_ship_patches_rev_and_says_live(client):
-    mid = await done_message_id(client)
+async def next_rev(events) -> int:
+    event = await anext(events)
+    while event["event"] != "datastar-patch-signals":
+        event = await anext(events)
+    m = re.search(r'"_rev":(\d+)', event["data"].replace(" ", ""))
+    assert m is not None
+    return int(m.group(1))
+
+
+async def test_a_live_change_reloads_the_frame(client):
     async with client.stream("GET", FRAME_LIVE.href("alpha"), params=TAB, timeout=2) as live:
         events = live.iter_events()
-        await next_patch(events)
-        r = await client.post(
-            ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "ship"}
-        )
-        assert r.status_code == 204
-        assert "Live." in await next_patch(events)
-        event = await anext(events)
-        assert event["event"] == "datastar-patch-signals"
-        assert '"_rev":1}' in event["data"].replace(" ", "")
+        assert await next_rev(events) == 0
+        await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
+        rev = 0
+        while rev == 0:
+            rev = await next_rev(events)
+        assert rev == 1
 
 
-async def test_act_on_a_shipped_change_is_409(client):
+async def test_undo_reverts_the_change_and_reloads_again(client):
     mid = await done_message_id(client)
-    body = {"tab": "t1", "message_id": mid, "action": "ship"}
+    r = await client.post(
+        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "undo"}
+    )
+    assert r.status_code == 204
+    await client.drain_tasks()
+    page = (await client.get(FRAME.href("alpha"))).text
+    assert "Undone. (fake)" in page
+    assert 'class="act undo"' not in page
+    async with client.stream("GET", FRAME_LIVE.href("alpha"), params=TAB, timeout=2) as live:
+        assert await next_rev(live.iter_events()) == 2
+
+
+async def test_undo_twice_is_409(client):
+    mid = await done_message_id(client)
+    body = {"tab": "t1", "message_id": mid, "action": "undo"}
     assert (await client.post(ACT.href("alpha"), json=body)).status_code == 204
     assert (await client.post(ACT.href("alpha"), json=body)).status_code == 409
 
@@ -128,39 +146,21 @@ async def test_act_on_a_shipped_change_is_409(client):
 async def test_act_on_a_message_of_another_app_is_404(client):
     mid = await done_message_id(client, app="beta")
     r = await client.post(
-        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "ship"}
+        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "undo"}
     )
     assert r.status_code == 404
 
 
 async def test_unknown_action_is_400(client):
     mid = await done_message_id(client)
-    r = await client.post(ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "fly"})
+    r = await client.post(
+        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "ship"}
+    )
     assert r.status_code == 400
 
 
-async def test_not_yet_drops_the_change(client):
-    mid = await done_message_id(client)
-    async with client.stream("GET", FRAME_LIVE.href("alpha"), params=TAB, timeout=2) as live:
-        events = live.iter_events()
-        await next_patch(events)
-        r = await client.post(
-            ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "not_yet"}
-        )
-        assert r.status_code == 204
-        assert "Okay. Tell me what to change." in await next_patch(events)
-
-
-async def test_a_ready_change_lights_the_pill(client):
+async def test_a_live_change_leaves_the_pill_idle(client):
     await done_message_id(client)
     page = (await client.get(FRAME.href("alpha"))).text
-    assert 'data-state="ready"' in page
-    assert 'data-pending="1"' in page
-    assert "Ready to ship" in page
-
-
-async def test_a_change_of_another_app_leaves_the_pill_idle(client):
-    await done_message_id(client, app="beta")
-    page = (await client.get(FRAME.href("alpha"))).text
     assert 'data-state="idle"' in page
-    assert "data-pending" not in page
+    assert "Ready to ship" not in page

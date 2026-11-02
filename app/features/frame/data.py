@@ -5,8 +5,6 @@ from typing import Any, cast
 from litewriter import LiteWriter, Tx
 from stario.json import dumps, loads
 
-from app.nudge.data import apply_action
-
 MESSAGES_SQL = """
 SELECT m.id, m.data, c.status
 FROM messages m
@@ -82,7 +80,7 @@ def schema(tx: Tx) -> None:
     # admits it was lost.
     tx.execute(
         "UPDATE changes SET data = json_set(data, '$.status', 'dropped')"
-        " WHERE status = 'working' AND data->>'agent_id' IS NULL"
+        " WHERE status IN ('working', 'deploying') AND data->>'run_id' IS NULL"
     )
     tx.execute(
         "UPDATE messages SET data = json_set(data, '$.text',"
@@ -121,26 +119,32 @@ def history_rows(db: LiteWriter, before_id: int, limit: int) -> list[Message]:
     )
 
 
-def working_count(db: LiteWriter, app: str) -> int:
+def get_phase(db: LiteWriter, app: str) -> str:
+    """What the coder does for the app now: deploying, working, or nothing."""
+    statuses = {
+        row[0]
+        for row in db.query(
+            "SELECT status FROM changes WHERE app = :app AND status IN ('working', 'deploying')",
+            app=app,
+        )
+    }
+    return next((s for s in ("deploying", "working") if s in statuses), "")
+
+
+def live_rev(db: LiteWriter, app: str) -> int:
+    """The newest change that went live: the frame reloads when it grows."""
     return db.value(
-        "SELECT count(*) FROM changes WHERE app = :app AND status = 'working'",
+        "SELECT coalesce(max(id), 0) FROM changes"
+        " WHERE app = :app AND status IN ('live', 'undone')",
         app=app,
     )
-
-
-def shipped_rev(db: LiteWriter, app: str) -> int:
-    row = db.one(
-        "SELECT id FROM changes WHERE app = :app AND status = 'shipped' ORDER BY id DESC LIMIT 1",
-        app=app,
-    )
-    return row[0] if row else 0
 
 
 def list_runs(db: LiteWriter) -> list[tuple]:
-    """Changes whose Cursor run is still going: id, app, brief, agent id, run id."""
+    """Changes whose Cursor run or deploy is still going: id, app, agent, run, after."""
     return db.query(
-        "SELECT id, app, data->>'brief', data->>'agent_id', data->>'run_id' FROM changes"
-        " WHERE status = 'working' AND data->>'agent_id' IS NOT NULL"
+        "SELECT id, app, data->>'agent_id', data->>'run_id', data->>'after' FROM changes"
+        " WHERE status IN ('working', 'deploying') AND data->>'run_id' IS NOT NULL"
     )
 
 
@@ -180,51 +184,53 @@ def set_reply(tx: Tx, message_id: int, text: str, change_id: int | None) -> None
     )
 
 
-def set_run(tx: Tx, change_id: int, agent_id: str, run_id: str) -> None:
+def set_run(tx: Tx, change_id: int, agent_id: str, run_id: str, after: str) -> None:
+    """The Cursor run of a change, and the deploy that was newest when it began."""
     tx.execute(
-        "UPDATE changes SET data = json_set(data, '$.agent_id', :agent, '$.run_id', :run)"
-        " WHERE id = :id",
+        "UPDATE changes SET data = json_set(data, '$.agent_id', :agent, '$.run_id', :run,"
+        " '$.after', :after) WHERE id = :id",
         id=change_id,
         agent=agent_id,
         run=run_id,
+        after=after,
     )
 
 
-def finish_change(tx: Tx, change_id: int, app: str, text: str, pr_url: str) -> None:
+def set_deploying(tx: Tx, change_id: int) -> None:
     tx.execute(
-        "UPDATE changes"
-        " SET data = json_set(data, '$.status', 'ready', '$.updated', :now, '$.pr_url', :pr)"
+        "UPDATE changes SET data = json_set(data, '$.status', 'deploying', '$.updated', :now)"
         " WHERE id = :id",
         id=change_id,
         now=_now(),
-        pr=pr_url,
     )
-    _add_message(tx, app, "nudge", text, change_id, actions=["ship", "not_yet"])
+
+
+def go_live(tx: Tx, change_id: int, app: str, text: str) -> None:
+    """The change is deployed. An undo offers no undo itself."""
+    undoes = tx.value("SELECT data->>'undoes' FROM changes WHERE id = :id", id=change_id)
+    tx.execute(
+        "UPDATE changes SET data = json_set(data, '$.status', 'live', '$.updated', :now)"
+        " WHERE id = :id",
+        id=change_id,
+        now=_now(),
+    )
+    _add_message(tx, app, "nudge", text, change_id, actions=[] if undoes else ["undo"])
 
 
 def fail_change(tx: Tx, change_id: int, app: str, text: str) -> None:
+    """The change did not go live. A failed undo leaves its change live again."""
     drop_change(tx, change_id)
+    tx.execute(
+        "UPDATE changes SET data = json_set(data, '$.status', 'live')"
+        " WHERE id = (SELECT data->>'undoes' FROM changes WHERE id = :id)",
+        id=change_id,
+    )
     _add_message(tx, app, "nudge", text, change_id)
-
-
-def add_reply(tx: Tx, app: str, text: str) -> None:
-    _add_message(tx, app, "nudge", text, None)
 
 
 def drop_change(tx: Tx, change_id: int) -> None:
     tx.execute(
         "UPDATE changes SET data = json_set(data, '$.status', 'dropped')"
-        " WHERE id = :id AND status = 'working'",
+        " WHERE id = :id AND status IN ('working', 'deploying')",
         id=change_id,
-    )
-
-
-def apply_action_with_reply(tx: Tx, change_id: int, app: str, action: str) -> None:
-    apply_action(tx, change_id, action)
-    _add_message(
-        tx,
-        app,
-        "nudge",
-        "Live." if action == "ship" else "Okay. Tell me what to change.",
-        change_id,
     )

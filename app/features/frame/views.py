@@ -8,7 +8,7 @@ from app.features.frame.urls import ACT, FRAME_LIVE, SAY
 from app.features.home.urls import HOME
 from app.features.shots.urls import SHOT
 
-ACTION_LABELS = {"ship": "Ship", "not_yet": "Not yet"}
+ACTION_LABELS = {"undo": "Undo"}
 
 INK_LOOP = svg.Svg(
     {"viewBox": "0 0 48 12", "class": "inkloop", "aria-hidden": "true"},
@@ -81,25 +81,22 @@ def render(
     messages: list[Message],
     name: str,
     url: str,
-    working: bool,
+    phase: str,
     rev: int,
     tab: str,
 ) -> HtmlElement:
     here = [m for m in messages if m.app == name]
     replies = [m for m in here if m.role == "nudge" and not m.thinking]
     latest = replies[-1] if replies else None
-    pending = next((m for m in reversed(replies) if m.actions and m.change_status == "ready"), None)
     if any(m.thinking for m in here):
         state, label = "busy", "Thinking"
-    elif working:
-        state, label = "busy", "Working"
-    elif pending:
-        state, label = "ready", "Ready to ship"
+    elif phase:
+        state, label = "busy", phase.capitalize()
     else:
         state, label = "idle", name
     latest_id = latest.id if latest else 0
     unread = f"$_seen < {latest_id}"
-    peek = pending or latest
+    peek = latest
     return page(
         f"nudgethis · {name}",
         h.Div(
@@ -151,7 +148,7 @@ def render(
                         ]
                     ),
                     h.Li({"class": "working"}, INK_LOOP)
-                    if working and not (messages and messages[-1].thinking)
+                    if phase and not (messages and messages[-1].thinking)
                     else None,
                 ),
                 h.Button(
@@ -177,7 +174,6 @@ def render(
                     {
                         "id": "nudge",
                         "data-latest": latest_id,
-                        **({"data-pending": "1"} if pending else {}),
                     },
                     data.class_("bottom", "$_dock === 'bottom'"),
                     data.init(
@@ -192,7 +188,7 @@ def render(
                     ),
                     data.on(
                         "pill-tap",
-                        "$_peek || $_seen < +el.dataset.latest || el.dataset.pending"
+                        "$_peek || $_seen < +el.dataset.latest"
                         " ? ($_peek = !$_peek, $_seen = +el.dataset.latest)"
                         " : ($_compose = !$_compose)",
                     ),

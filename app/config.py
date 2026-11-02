@@ -46,7 +46,8 @@ class Config:
     cursor_api_key: str
     cursor_model: str
     repo_base: str
-    github_token: str
+    yard_url: str
+    yard_token: str
     google_client_id: str
     google_client_secret: str
     session_secret: bytes
@@ -78,7 +79,8 @@ class Config:
             cursor_api_key=os.environ.get("CURSOR_API_KEY", "").strip(),
             cursor_model=os.environ.get("CURSOR_MODEL", "").strip(),
             repo_base=os.environ.get("NUDGE_REPO_BASE", "https://github.com/Bobowski").rstrip("/"),
-            github_token=os.environ.get("GITHUB_TOKEN", "").strip(),
+            yard_url=os.environ.get("YARD_URL", "https://yard.bobowski.dev").rstrip("/"),
+            yard_token=os.environ.get("YARD_TOKEN", "").strip(),
             google_client_id=require_env("GOOGLE_CLIENT_ID"),
             google_client_secret=require_env("GOOGLE_CLIENT_SECRET"),
             session_secret=require_env("SESSION_SECRET").encode(),

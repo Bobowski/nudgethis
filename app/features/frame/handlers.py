@@ -3,6 +3,7 @@ import base64
 import binascii
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from stario.datastar import SSE, read_signals
 
 from app.coder import CoderError
 from app.coder.cursor import Cursor
-from app.coder.github import GitHub
+from app.coder.yard import Yard
 from app.config import Config
 from app.features.frame import data as store
 from app.features.frame.urls import ACT, FRAME, FRAME_LIVE, SAY
@@ -31,6 +32,7 @@ from app.nudge import data as nudge_data
 from app.nudge.agent import TurnDeps
 
 MAX_SHOT = 4 * 1024 * 1024
+DEPLOY_TIMEOUT = 600
 MAGIC = {
     "png": (b"\x89PNG\r\n\x1a\n", "png"),
     "jpeg": (b"\xff\xd8\xff", "jpg"),
@@ -84,7 +86,7 @@ class FramePage:
     model_name: str
     instructions: str
     cursor: Cursor | None
-    github: GitHub
+    yard: Yard | None
 
     def register(self, app: App) -> None:
         app.add(FRAME, self.show)
@@ -96,11 +98,13 @@ class FramePage:
         return dict(self.config.apps).get(name)
 
     def resume(self, app: App, span: Span) -> None:
-        """Follow the Cursor runs that were going when the process stopped."""
-        for change_id, name, _brief, agent_id, run_id in store.list_runs(self.db):
+        """Follow the Cursor runs and deploys that were going when the process stopped."""
+        for change_id, name, agent_id, run_id, after in store.list_runs(self.db):
             if self.url_of(name) is not None and self.cursor is not None:
                 app.create_task(
-                    self.follow(change_id, name, agent_id, run_id, span.step("nudge.resume"))
+                    self.resumed(
+                        change_id, name, agent_id, run_id, after, span.step("nudge.resume")
+                    )
                 )
 
     def pod(self, name: str, url: str, tab: str):
@@ -108,8 +112,8 @@ class FramePage:
             list(reversed(self.db.query(store.MESSAGES_SQL, store.message_row))),
             name,
             url,
-            store.working_count(self.db, name) > 0,
-            store.shipped_rev(self.db, name),
+            store.get_phase(self.db, name),
+            store.live_rev(self.db, name),
             tab,
         )
 
@@ -139,12 +143,12 @@ class FramePage:
                         list(reversed(messages)),
                         name,
                         url,
-                        store.working_count(self.db, name) > 0,
-                        store.shipped_rev(self.db, name),
+                        store.get_phase(self.db, name),
+                        store.live_rev(self.db, name),
                         tab,
                     )
                 )
-                sse.patch_signals({"_rev": store.shipped_rev(self.db, name)})
+                sse.patch_signals({"_rev": store.live_rev(self.db, name)})
 
     async def say(self, c: Context, w: Writer) -> None:
         name = c.match.params["app"]
@@ -189,6 +193,9 @@ class FramePage:
                 self.code(change_id, name, url, brief, names, step.step("nudge.code"))
             )
 
+        async def undo(change_id: int) -> str:
+            return await self.start_undo(c.app, change_id, name, step)
+
         c.app.create_task(
             self.turn(
                 name,
@@ -198,6 +205,7 @@ class FramePage:
                 text,
                 names,
                 start_ready,
+                undo,
                 step,
             )
         )
@@ -211,6 +219,7 @@ class FramePage:
         text: str,
         shot_names: list[str],
         start_ready: Any,
+        undo: Callable[[int], Awaitable[str]],
         span: Span,
     ) -> None:
         with span:
@@ -220,7 +229,7 @@ class FramePage:
                 app_name=name,
                 you_message_id=you_id,
                 start_ready=start_ready,
-                settle=lambda change_id, action: self.settle(change_id, name, action, reply=False),
+                undo=undo,
             )
             prompt: list[Any] = [text] if text else []
             for fname in shot_names:
@@ -281,13 +290,7 @@ class FramePage:
         with span:
             span.attrs({"change.id": change_id, "coder": "cursor" if self.cursor else "fake"})
             if self.cursor is None:
-                try:
-                    await asyncio.sleep(self.config.fake_delay)
-                except asyncio.CancelledError:
-                    await self.db.write(store.drop_change, change_id)
-                    raise
-                text = "Done. (fake) I'd change that now."
-                await self.db.write(store.finish_change, change_id, name, text, "")
+                await self.fake(change_id, name, "Done. (fake) I'd change that now.")
                 return
             images = [
                 ((self.config.shots_dir / f).read_bytes(), SHOT_TYPES[Path(f).suffix])
@@ -301,58 +304,94 @@ class FramePage:
                     if images
                     else ""
                 )
-                + " Keep the change small and run `just check` before you finish."
+                + " Keep the change small, run `just check`, and push to main."
             )
-            try:
-                agent_id, run_id = await self.cursor.start(
-                    f"{self.config.repo_base}/{name}", prompt, images, brief
-                )
-            except CoderError as exc:
-                await self.db.write(store.fail_change, change_id, name, f"I could not start: {exc}")
-                span.fail(str(exc))
-                return
-            await self.db.write(store.set_run, change_id, agent_id, run_id)
-            await self.follow(change_id, name, agent_id, run_id, span)
+            cursor, repo = self.cursor, f"{self.config.repo_base}/{name}"
+            await self.launch(
+                change_id, name, span, lambda: cursor.start(repo, prompt, images, brief)
+            )
+
+    async def fake(self, change_id: int, name: str, text: str) -> None:
+        try:
+            await asyncio.sleep(self.config.fake_delay)
+        except asyncio.CancelledError:
+            await self.db.write(store.drop_change, change_id)
+            raise
+        await self.db.write(store.go_live, change_id, name, text)
+
+    async def launch(
+        self, change_id: int, name: str, span: Span, start: Callable[[], Awaitable[tuple[str, str]]]
+    ) -> None:
+        """Start a Cursor run, then follow it through the deploy."""
+        try:
+            after = str((await self.yard.last_deploy(name)).get("started", "")) if self.yard else ""
+            agent_id, run_id = await start()
+        except CoderError as exc:
+            await self.db.write(store.fail_change, change_id, name, f"I could not start: {exc}")
+            span.fail(str(exc))
+            return
+        await self.db.write(store.set_run, change_id, agent_id, run_id, after)
+        await self.follow(change_id, name, agent_id, run_id, after, span)
+
+    async def resumed(
+        self, change_id: int, name: str, agent_id: str, run_id: str, after: str, span: Span
+    ) -> None:
+        with span:
+            await self.follow(change_id, name, agent_id, run_id, after, span)
 
     async def follow(
-        self, change_id: int, name: str, agent_id: str, run_id: str, span: Span
+        self, change_id: int, name: str, agent_id: str, run_id: str, after: str, span: Span
     ) -> None:
-        """Wait for the Cursor run; its pull request is the change."""
+        """The run pushes to main; the change is live when Yard's next deploy is ok."""
         assert self.cursor is not None
-        with span:
-            try:
-                run = await self.cursor.wait(agent_id, run_id)
-            except CoderError as exc:
-                await self.db.write(store.fail_change, change_id, name, f"The coder failed: {exc}")
-                span.fail(str(exc))
-                return
-            span.attrs({"cursor.status": run.status, "cursor.pr": run.pr_url})
-            if run.status != "FINISHED" or not run.pr_url:
+        try:
+            run = await self.cursor.wait(agent_id, run_id)
+            span.attrs({"cursor.status": run.status})
+            if run.status != "FINISHED":
                 why = run.result[:300] or run.status.lower()
                 await self.db.write(store.fail_change, change_id, name, f"No change: {why}")
                 return
             text = run.result[:600] or "Done."
-            await self.db.write(store.finish_change, change_id, name, text, run.pr_url)
+            if self.yard is not None:
+                await self.db.write(store.set_deploying, change_id)
+                async with asyncio.timeout(DEPLOY_TIMEOUT):
+                    deploy = await self.yard.next_deploy(name, after)
+                span.attrs({"yard.status": deploy.get("status", "")})
+                if deploy.get("status") != "ok":
+                    why = deploy.get("error") or deploy.get("status")
+                    text = f"Pushed, but the deploy did not go live: {why}"
+                    await self.db.write(store.fail_change, change_id, name, text)
+                    return
+        except (CoderError, TimeoutError) as exc:
+            why = str(exc) or "the deploy took too long"
+            await self.db.write(store.fail_change, change_id, name, f"The change failed: {why}")
+            span.fail(why)
+            return
+        await self.db.write(store.go_live, change_id, name, text)
 
-    async def settle(self, change_id: int, name: str, action: str, reply: bool = True) -> str:
-        """Ship merges the pull request; Not yet closes it.
-
-        A button gets a short reply; the agent's tool call writes its own.
-        """
+    async def start_undo(self, app: App, change_id: int, name: str, span: Span) -> str:
+        """Revert a live change: a follow-up run on the agent that made it."""
         row = nudge_data.get_change(self.db, change_id)
-        if row is None or row[1] != name or row[2] != "ready":
-            return f"change #{change_id} is not ready"
-        try:
-            if row[3]:
-                await (self.github.merge if action == "ship" else self.github.close)(row[3])
-        except CoderError as exc:
-            await self.db.write(store.add_reply, name, f"That did not work: {exc}")
-            return f"change #{change_id} failed: {exc}"
-        if reply:
-            await self.db.write(store.apply_action_with_reply, change_id, name, action)
-        else:
-            await self.db.write(nudge_data.apply_action, change_id, action)
-        return f"change #{change_id} {'shipped' if action == 'ship' else 'dropped'}"
+        if row is None or row[1] != name or row[2] != "live":
+            return f"change #{change_id} is not live"
+        undo_id = await self.db.write(nudge_data.start_undo, change_id)
+        app.create_task(self.undo(undo_id, change_id, name, row[3], span.step("nudge.undo")))
+        return f"undoing change #{change_id} as #{undo_id}"
+
+    async def undo(
+        self, undo_id: int, change_id: int, name: str, agent_id: str | None, span: Span
+    ) -> None:
+        with span:
+            span.attrs({"change.id": undo_id, "change.undoes": change_id})
+            cursor = self.cursor
+            if cursor is None or not agent_id:
+                await self.fake(undo_id, name, "Undone. (fake)")
+                return
+            text = (
+                "Revert the change you pushed to main in your last run, run `just check`,"
+                " and push the revert to main."
+            )
+            await self.launch(undo_id, name, span, lambda: cursor.follow_up(agent_id, text))
 
     async def act(self, c: Context, w: Writer) -> None:
         name = c.match.params["app"]
@@ -366,18 +405,18 @@ class FramePage:
         if not tab.isalnum() or len(tab) > 32:
             w.text("tab must be a short id", status=400)
             return
-        if type(message_id) is not int or action not in ("ship", "not_yet"):
+        if type(message_id) is not int or action != "undo":
             w.text("bad action", status=400)
             return
         message = store.get_message(self.db, message_id)
         if message is None or message.app != name:
             w.text("no such message", status=404)
             return
-        if message.change_status != "ready" or message.change_id is None:
-            w.text("the change is not ready", status=409)
+        if message.change_status != "live" or message.change_id is None:
+            w.text("the change is not live", status=409)
             return
         if action not in message.actions:
             w.text("the message has no such action", status=400)
             return
         w.empty()
-        await self.settle(message.change_id, name, action)
+        await self.start_undo(c.app, message.change_id, name, c.span)

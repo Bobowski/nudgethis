@@ -88,7 +88,7 @@ async def main() -> int:
     turns = [
         {"text": "make the header text bigger", "shots": [marked, clean]},
         {"text": "what's running?", "shots": []},
-        {"text": "ship it", "shots": []},
+        {"text": "undo that", "shots": []},
     ]
     db_path = os.environ["PROJECT_DATA_DIR"] + "/nudgethis.sqlite3"
     async with TestClient(bootstrap, request_timeout=90) as client:
