@@ -54,7 +54,8 @@ class HomePage:
             sse.patch_signals({"_toast": "A name is 2 to 30 lowercase letters, digits, or -."})
             return
         name = f"nudge-{label}"
-        if name in dict(self.config.apps) or store.get_app(self.db, name) is not None:
+        made = store.get_app(self.db, name)
+        if name in dict(self.config.apps) or (made is not None and made[1] != "failed"):
             sse.patch_signals({"_toast": f"{label} exists."})
             return
         sse.patch_signals({"new_name": ""})

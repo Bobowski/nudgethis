@@ -31,6 +31,8 @@ def get_app(db: LiteWriter, name: str) -> tuple | None:
 
 
 def add_app(tx: Tx, name: str, url: str) -> None:
+    """A new app, in place of a failed one of the same name."""
+    tx.execute("DELETE FROM apps WHERE name = :name AND data->>'status' = 'failed'", name=name)
     tx.execute(
         "INSERT INTO apps (data) VALUES (:data)",
         data=dumps(
