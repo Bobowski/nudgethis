@@ -153,3 +153,14 @@ async def test_bad_or_taken_names_get_a_toast(yard):
 async def test_without_a_yard_token_new_app_says_so(client):
     r = await client.post(NEW_APP.href(), json={"new_name": "plants"})
     assert "Set YARD_TOKEN to make apps." in r.text
+
+
+async def test_an_unreachable_yard_marks_the_app_failed(yard):
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("All connection attempts failed", request=request)
+
+    async with yard(down) as client:
+        await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        await client.drain_tasks()
+        home = (await client.get(HOME.href())).text
+        assert "Yard at https://yard.example did not answer" in home
