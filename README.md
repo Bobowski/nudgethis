@@ -56,7 +56,7 @@ Optional:
 - `CURSOR_MODEL` — optional Cursor model id. Empty means Cursor's default.
 - `NUDGE_REPO_BASE` — the repo of an app is `<base>/<name>`. Default `https://github.com/Bobowski`.
 - `NUDGE_DOMAIN` — new apps live on `<name>.<domain>`, default `wrati.dev`. `NUDGE_TEMPLATE` — the template repo, default `https://github.com/Bobowski/nudge-template`.
-- `YARD_URL` — default `https://yard.bobowski.dev`. On the Yard VM, set `http://yard-app-1:8000`: a container there cannot reach the public address. `YARD_TOKEN` — a Yard token (`yard token new`). Without it, a change is live when the run ends, not when the deploy ends.
+- `YARD_URL` — default `http://yard-app-1:8000`, Yard's container on the `yard` podman network: an app on the Yard VM cannot reach the public address. On a laptop, set `https://yard.bobowski.dev`. `YARD_TOKEN` — a Yard token (`yard token new`). Without it, a change is live when the run ends, not when the deploy ends.
 - `PROJECT_DATA_DIR` — data directory (`nudgethis.sqlite3`, `shots/`). Default `./data`.
 
 `just smoke` runs three turns against the real model (needs `OPENAI_API_KEY` in `.env`). The system instructions live in `app/nudge/instructions.md` — the lead owns that text.
