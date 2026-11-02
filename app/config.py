@@ -81,7 +81,9 @@ class Config:
             cursor_api_key=os.environ.get("CURSOR_API_KEY", "").strip(),
             cursor_model=os.environ.get("CURSOR_MODEL", "").strip(),
             repo_base=os.environ.get("NUDGE_REPO_BASE", "https://github.com/Bobowski").rstrip("/"),
-            yard_url=os.environ.get("YARD_URL", "https://yard.bobowski.dev").rstrip("/"),
+            # Yard's own container on the `yard` podman network: an app on the Yard host
+            # cannot reach the host's public address.
+            yard_url=os.environ.get("YARD_URL", "http://yard-app-1:8000").rstrip("/"),
             yard_token=os.environ.get("YARD_TOKEN", "").strip(),
             domain=os.environ.get("NUDGE_DOMAIN", "wrati.dev").strip(),
             template=os.environ.get(
