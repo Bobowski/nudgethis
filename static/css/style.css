@@ -95,6 +95,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 #home li a { font-weight: 600; text-decoration: none; }
 #home li a:hover { text-decoration: underline; }
 #home .appurl { margin-left: 0.75rem; font-size: 0.82rem; color: var(--dim); }
+#home .logout { margin-top: 2rem; color: var(--dim); font-size: 0.82rem; }
 
 /* ---------- stage: the app, full screen ---------- */
 

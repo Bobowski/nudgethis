@@ -2,7 +2,9 @@
 
 A frame around a live web app. The app runs full-size in an iframe. Beside it is the pod: one conversation with an agent called Nudge. Snap a screenshot of the app, draw on it, say what you want, and Nudge changes the code; "Ship" reloads the frame.
 
-Nudge is a real model (OpenAI via pydantic-ai, Responses API). The coder is a Cursor Cloud Agent: it works on the app's repo and opens a pull request. "Ship" merges that pull request; "Not yet" closes it. Without `CURSOR_API_KEY`, a fake coder marks a change ready after `NUDGE_FAKE_DELAY`. Local only, no auth.
+Nudge is a real model (OpenAI via pydantic-ai, Responses API). The coder is a Cursor Cloud Agent: it works on the app's repo and opens a pull request. "Ship" merges that pull request; "Not yet" closes it. Without `CURSOR_API_KEY`, a fake coder marks a change ready after `NUDGE_FAKE_DELAY`.
+
+Every page needs a Google sign-in, and only the emails in `NUDGE_ALLOWED_EMAILS` get in. The apps that nudgethis frames are not behind this sign-in.
 
 ## Run
 
@@ -21,7 +23,15 @@ The frame shows the live app. A change is a pull request on GitHub: read it ther
 
 ## Config
 
-All optional, via env or `.env`:
+Required, via env or `.env`. Without them nudgethis does not start:
+
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — a Google OAuth client. Its redirect URI is `<NUDGE_PUBLIC_URL>/auth/google/callback`, as in honorata.
+- `SESSION_SECRET` — 32+ random characters that sign the session cookie.
+- `NUDGE_ALLOWED_EMAILS` — a comma list of the Google accounts that may sign in.
+
+Optional:
+
+- `NUDGE_PUBLIC_URL` — the address of nudgethis, default `http://127.0.0.1:8000`. On Yard: `https://wrati.dev`. An `https` address makes the cookie secure.
 
 - `NUDGE_APPS` — comma list of `name=url`, e.g. `kran-fundament=https://kran.bobowski.dev,stario-site=https://stario.dev`. Names match `[a-z0-9-]+`, urls are http(s). Default: `stario-site=https://stario.dev`.
 - `NUDGE_FAKE_DELAY` — seconds before the fake coder marks a change ready. Default `4`.

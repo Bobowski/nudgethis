@@ -14,9 +14,13 @@ import sys
 import tempfile
 import time
 import zlib
+from functools import partial
 
+import httpx
 from stario.testing import TestClient
+from tests.conftest import ADAM, google_token, login
 
+import app.main
 from app.main import bootstrap
 
 
@@ -70,6 +74,16 @@ async def main() -> int:
     os.environ["PROJECT_DATA_DIR"] = tempfile.mkdtemp(prefix="nudgethis-smoke-")
     os.environ["NUDGE_FAKE_DELAY"] = "0"
     os.environ.setdefault("NUDGE_APPS", "stario-site=https://stario.dev")
+    # The real model only: a fake coder, and a mocked Google that signs in ADAM.
+    os.environ["CURSOR_API_KEY"] = ""
+    os.environ |= {
+        "GOOGLE_CLIENT_ID": "google-id",
+        "GOOGLE_CLIENT_SECRET": "google-secret",
+        "SESSION_SECRET": "smoke-secret-of-at-least-thirty-two-chars",
+        "NUDGE_ALLOWED_EMAILS": ADAM,
+    }
+    google = httpx.MockTransport(lambda r: google_token(r) or httpx.Response(404))
+    app.main.AsyncClient = partial(httpx.AsyncClient, transport=google)  # type: ignore[misc]
     marked, clean = png(400, 240, True), png(400, 240, False)
     turns = [
         {"text": "make the header text bigger", "shots": [marked, clean]},
@@ -78,6 +92,7 @@ async def main() -> int:
     ]
     db_path = os.environ["PROJECT_DATA_DIR"] + "/nudgethis.sqlite3"
     async with TestClient(bootstrap, request_timeout=90) as client:
+        await login(client)
         for i, turn in enumerate(turns):
             started = time.monotonic()
             r = await client.post("/a/stario-site/say", json={"tab": "s1", **turn})
