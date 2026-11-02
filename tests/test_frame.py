@@ -149,3 +149,18 @@ async def test_not_yet_drops_the_change(client):
         )
         assert r.status_code == 204
         assert "Okay. Tell me what to change." in await next_patch(events)
+
+
+async def test_a_ready_change_lights_the_pill(client):
+    await done_message_id(client)
+    page = (await client.get(FRAME.href("alpha"))).text
+    assert 'data-state="ready"' in page
+    assert 'data-pending="1"' in page
+    assert "Ready to ship" in page
+
+
+async def test_a_change_of_another_app_leaves_the_pill_idle(client):
+    await done_message_id(client, app="beta")
+    page = (await client.get(FRAME.href("alpha"))).text
+    assert 'data-state="idle"' in page
+    assert "data-pending" not in page

@@ -30,6 +30,12 @@ app.ink = {
       this.canvas.width = Math.round(this.w * dpr);
       this.canvas.height = Math.round(this.h * dpr);
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Fit the shot inside the canvas without stretching it.
+      const fit = Math.min(this.w / img.width, this.h / img.height);
+      this.fw = img.width * fit;
+      this.fh = img.height * fit;
+      this.fx = (this.w - this.fw) / 2;
+      this.fy = (this.h - this.fh) / 2;
       this.color =
         getComputedStyle(this.el).getPropertyValue("--accent").trim() ||
         "rgb(212, 70, 30)";
@@ -57,19 +63,18 @@ app.ink = {
   },
 
   done() {
-    const scale = Math.min(
-      1,
-      1600 / Math.max(this.canvas.width, this.canvas.height),
-    );
-    const out = (source) => {
-      const c = document.createElement("canvas");
-      c.width = Math.max(1, Math.round(this.canvas.width * scale));
-      c.height = Math.max(1, Math.round(this.canvas.height * scale));
-      c.getContext("2d").drawImage(source, 0, 0, c.width, c.height);
-      return c.toDataURL("image/png");
-    };
+    const dpr = this.canvas.width / this.w;
+    const scale = Math.min(1, 1600 / (Math.max(this.fw, this.fh) * dpr));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(this.fw * dpr * scale));
+    c.height = Math.max(1, Math.round(this.fh * dpr * scale));
+    const ctx = c.getContext("2d");
+    const [x, y, w, h] = [this.fx, this.fy, this.fw, this.fh].map((v) => v * dpr);
+    ctx.drawImage(this.canvas, x, y, w, h, 0, 0, c.width, c.height);
+    const marked = c.toDataURL("image/png");
+    ctx.drawImage(this.img, 0, 0, c.width, c.height);
     this.el.classList.remove("on");
-    this.doneCb([out(this.canvas), out(this.img)]);
+    this.doneCb([marked, c.toDataURL("image/png")]);
   },
 
   down(e) {
@@ -87,7 +92,7 @@ app.ink = {
     this.draft =
       this.t === "marker"
         ? { t: "m", pts: [p] }
-        : { t: this.t === "arrow" ? "a" : "b", x1: p[0], y1: p[1], x2: p[0], y2: p[1] };
+        : { t: { arrow: "a", ring: "e" }[this.t] || "b", x1: p[0], y1: p[1], x2: p[0], y2: p[1] };
   },
 
   move(e) {
@@ -116,7 +121,7 @@ app.ink = {
   redraw() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
-    ctx.drawImage(this.img, 0, 0, this.w, this.h);
+    ctx.drawImage(this.img, this.fx, this.fy, this.fw, this.fh);
     for (const op of this.ops) this.draw(op);
     if (this.draft) this.draw(this.draft);
   },
@@ -141,6 +146,11 @@ app.ink = {
         ctx.moveTo(op.x2, op.y2);
         ctx.lineTo(op.x2 - 14 * Math.cos(a + d), op.y2 - 14 * Math.sin(a + d));
       }
+      ctx.stroke();
+    } else if (op.t === "e") {
+      const rx = Math.abs(op.x2 - op.x1) / 2;
+      const ry = Math.abs(op.y2 - op.y1) / 2;
+      ctx.ellipse((op.x1 + op.x2) / 2, (op.y1 + op.y2) / 2, rx, ry, 0, 0, Math.PI * 2);
       ctx.stroke();
     } else if (op.t === "b") {
       ctx.strokeRect(op.x1, op.y1, op.x2 - op.x1, op.y2 - op.y1);
