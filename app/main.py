@@ -1,7 +1,7 @@
 import asyncio
 
 from httpx import AsyncClient
-from litewriter import LiteWriter
+from litewriter import LiteWriter, Tx
 from stario import App, Span, serve
 from stario.http import same_origin, security_headers
 
@@ -12,12 +12,18 @@ from app.common.session import Session
 from app.config import Config
 from app.features.auth.handlers import AuthPage
 from app.features.auth.urls import AUTH_GOOGLE
-from app.features.frame.data import schema
+from app.features.frame import data as frame_data
 from app.features.frame.handlers import FramePage
+from app.features.home import data as home_data
 from app.features.home.handlers import HomePage
 from app.features.shots.handlers import ShotsPage
 from app.nudge.agent import build_agent, load_instructions
 from app.oauth.google import Google
+
+
+def schema(tx: Tx) -> None:
+    frame_data.schema(tx)
+    home_data.schema(tx)
 
 
 async def bootstrap(app: App, span: Span):
@@ -41,16 +47,9 @@ async def bootstrap(app: App, span: Span):
         cursor = (
             Cursor(http, config.cursor_api_key, config.cursor_model) if coder == "cursor" else None
         )
-        frame = FramePage(
-            db,
-            config,
-            agent,
-            model_name,
-            instructions,
-            cursor,
-            Yard(http, config.yard_url, config.yard_token) if config.yard_token else None,
-        )
-        HomePage(config.apps, signed_in).register(app)
+        yard = Yard(http, config.yard_url, config.yard_token) if config.yard_token else None
+        frame = FramePage(db, config, agent, model_name, instructions, cursor, yard)
+        HomePage(db, config, http, yard, signed_in).register(app)
         google = Google(http, config.google_client_id, config.google_client_secret)
         AuthPage(session, google, config.allowed_emails, config.public_url).register(app)
         frame.register(app)

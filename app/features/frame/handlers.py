@@ -27,6 +27,7 @@ from app.config import Config
 from app.features.frame import data as store
 from app.features.frame.urls import FRAME, FRAME_LIVE, SAY, UNDO
 from app.features.frame.views import render
+from app.features.home import data as apps
 from app.nudge import agent as nudge
 from app.nudge import data as nudge_data
 from app.nudge.agent import TurnDeps
@@ -95,7 +96,11 @@ class FramePage:
         app.add(UNDO, self.undo_command)
 
     def url_of(self, name: str) -> str | None:
-        return dict(self.config.apps).get(name)
+        """An app from NUDGE_APPS, or one that nudgethis made and Yard deployed."""
+        made = apps.get_app(self.db, name)
+        return dict(self.config.apps).get(name) or (
+            made[0] if made and made[1] == "ready" else None
+        )
 
     def resume(self, app: App, span: Span) -> None:
         """Follow the Cursor runs and deploys that were going when the process stopped."""

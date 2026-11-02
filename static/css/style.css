@@ -96,6 +96,36 @@ button:disabled { opacity: 0.4; cursor: default; }
 #home .appurl { margin-left: 0.75rem; font-size: 0.82rem; color: var(--dim); }
 #home .logout { margin-top: 2rem; color: var(--dim); font-size: 0.82rem; }
 
+.newapp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1.5rem;
+  padding: 6px 6px 6px 16px;
+  border-radius: 999px;
+}
+.newname { flex: 1; display: flex; align-items: baseline; min-width: 0; font-size: 0.92rem; }
+.newname input {
+  flex: 1;
+  min-width: 4ch;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: none;
+  padding: 6px 2px;
+}
+.newapp .make { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.newapp > .dim { font-size: 0.82rem; padding-right: 10px; }
+
+#home .apps li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0.75rem; }
+#home .apps .name { font-weight: 600; color: var(--dim); }
+#home .apps .appurl { margin-left: 0; }
+.state { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--dim); }
+.state .inkloop { width: 30px; }
+.state.failed { color: var(--accent); }
+
 /* ---------- stage: the app, full screen ---------- */
 
 #frame { position: fixed; inset: 0; overflow: hidden; background: var(--tint); }

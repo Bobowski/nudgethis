@@ -47,6 +47,8 @@ class Config:
     cursor_model: str
     repo_base: str
     yard_url: str
+    domain: str
+    template: str
     yard_token: str
     google_client_id: str
     google_client_secret: str
@@ -81,6 +83,10 @@ class Config:
             repo_base=os.environ.get("NUDGE_REPO_BASE", "https://github.com/Bobowski").rstrip("/"),
             yard_url=os.environ.get("YARD_URL", "https://yard.bobowski.dev").rstrip("/"),
             yard_token=os.environ.get("YARD_TOKEN", "").strip(),
+            domain=os.environ.get("NUDGE_DOMAIN", "wrati.dev").strip(),
+            template=os.environ.get(
+                "NUDGE_TEMPLATE", "https://github.com/Bobowski/nudge-template"
+            ).rstrip("/"),
             google_client_id=require_env("GOOGLE_CLIENT_ID"),
             google_client_secret=require_env("GOOGLE_CLIENT_SECRET"),
             session_secret=require_env("SESSION_SECRET").encode(),
