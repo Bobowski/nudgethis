@@ -127,3 +127,29 @@ async def test_a_failed_deploy_drops_the_change(cursor, tmp_path):
         page = (await client.get(FRAME.href("alpha"))).text
         assert "Pushed, but the deploy did not go live: boom" in page
     assert statuses(tmp_path) == ["dropped"]
+
+
+async def test_the_model_and_its_params_go_with_the_launch(cursor, monkeypatch):
+    monkeypatch.setenv("CURSOR_MODEL", "grok-4.7:context=256k,reasoning_effort=high,fast=false")
+    remote = Remote()
+    async with cursor(remote) as client:
+        await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
+        await client.drain_tasks()
+    (launch,) = remote.sent("POST", "https://api.cursor.com/v1/agents")
+    assert launch["model"] == {
+        "id": "grok-4.7",
+        "params": [
+            {"id": "context", "value": "256k"},
+            {"id": "reasoning_effort", "value": "high"},
+            {"id": "fast", "value": "false"},
+        ],
+    }
+
+
+def test_a_bad_cursor_model_stops_the_config():
+    from app.config import parse_cursor_model
+
+    assert parse_cursor_model("") == ("", ())
+    assert parse_cursor_model("composer-2.5") == ("composer-2.5", ())
+    with pytest.raises(ValueError):
+        parse_cursor_model("grok-4.7:context")
