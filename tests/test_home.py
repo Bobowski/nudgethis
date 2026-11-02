@@ -6,7 +6,7 @@ import pytest
 from stario.testing import TestClient
 
 from app.features.frame.urls import FRAME
-from app.features.home.urls import HOME, NEW_APP
+from app.features.home.urls import HOME, HOME_LIVE, NEW_APP
 from app.main import bootstrap
 from tests.conftest import _env, signed_in, use_transport
 
@@ -178,3 +178,52 @@ async def test_a_failed_app_can_be_made_again(yard):
         home = (await client.get(HOME.href())).text
         assert 'href="/a/nudge-plants"' in home
         assert "did not go live" not in home
+
+
+async def test_the_home_stream_shows_each_step_and_the_ready_app(yard):
+    async with yard(Remote()) as client:
+        async with client.stream("GET", HOME_LIVE.href(), timeout=2) as live:
+            events = live.iter_events()
+            first = await anext(events)
+            assert first["event"] == "datastar-patch-elements"
+            await client.post(NEW_APP.href(), json={"new_name": "plants"})
+            seen = ""
+            try:
+                for _ in range(12):
+                    event = await anext(events)
+                    seen += event["data"]
+                    if 'href="/a/nudge-plants"' in seen:
+                        break
+            except TimeoutError:
+                pass
+            assert "Making the repo" in seen or "Waiting" in seen
+            assert 'href="/a/nudge-plants"' in seen
+
+
+async def test_a_restart_marks_an_unfinished_app_failed(yard):
+    class Hang(Remote):
+        def __call__(self, request):
+            if str(request.url).endswith("/api/v1/repos"):
+                raise httpx.ConnectTimeout("slow", request=request)
+            return super().__call__(request)
+
+    async with yard(Hang()) as client:
+        await client.post(NEW_APP.href(), json={"new_name": "plants"})
+    async with yard(Remote()) as client:
+        home = (await client.get(HOME.href())).text
+        assert "Making the repo" not in home
+
+
+async def test_an_unexpected_error_marks_the_app_failed(yard):
+    class Odd(Remote):
+        def __call__(self, request):
+            if str(request.url).endswith("/api/v1/repos"):
+                return httpx.Response(200, json={"nothing": "here"})
+            return super().__call__(request)
+
+    async with yard(Odd()) as client:
+        await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        await client.drain_tasks()
+        home = (await client.get(HOME.href())).text
+        assert "KeyError" in home
+        assert "Making the repo" not in home

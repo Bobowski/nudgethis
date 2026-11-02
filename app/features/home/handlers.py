@@ -98,4 +98,10 @@ class HomePage:
                 await self.db.write(store.set_app, name, "failed", why)
                 span.fail(why)
                 return
+            except Exception as exc:
+                # A row left on a step would look stuck until the next restart.
+                why = f"{type(exc).__name__}: {exc}"
+                await self.db.write(store.set_app, name, "failed", why)
+                span.fail(why)
+                return
             await self.db.write(store.set_app, name, "ready", "")
