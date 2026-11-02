@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import httpx
 from litewriter import LiteWriter
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.messages import (
@@ -20,7 +19,7 @@ from pydantic_ai.messages import (
 from stario import App, Context, Span, Writer
 from stario.datastar import SSE, read_signals
 
-from app.coder import CoderError, checkout
+from app.coder import CoderError
 from app.coder.cursor import Cursor
 from app.coder.github import GitHub
 from app.config import Config
@@ -84,7 +83,6 @@ class FramePage:
     agent: Agent[TurnDeps, str]
     model_name: str
     instructions: str
-    http: httpx.AsyncClient
     cursor: Cursor | None
     github: GitHub
 
@@ -97,18 +95,12 @@ class FramePage:
     def url_of(self, name: str) -> str | None:
         return dict(self.config.apps).get(name)
 
-    def clone_of(self, name: str) -> Path | None:
-        """The local clone of the app, when NUDGE_CHECKOUTS has one."""
-        root = self.config.checkouts
-        return root / name if root and (root / name / ".git").exists() else None
-
     def resume(self, app: App, span: Span) -> None:
         """Follow the Cursor runs that were going when the process stopped."""
         for change_id, name, _brief, agent_id, run_id in store.list_runs(self.db):
-            url = self.url_of(name)
-            if url is not None and self.cursor is not None:
+            if self.url_of(name) is not None and self.cursor is not None:
                 app.create_task(
-                    self.follow(change_id, name, url, agent_id, run_id, span.step("nudge.resume"))
+                    self.follow(change_id, name, agent_id, run_id, span.step("nudge.resume"))
                 )
 
     def pod(self, name: str, url: str, tab: str):
@@ -117,7 +109,7 @@ class FramePage:
             name,
             url,
             store.working_count(self.db, name) > 0,
-            store.reload_rev(self.db, name),
+            store.shipped_rev(self.db, name),
             tab,
         )
 
@@ -148,11 +140,11 @@ class FramePage:
                         name,
                         url,
                         store.working_count(self.db, name) > 0,
-                        store.reload_rev(self.db, name),
+                        store.shipped_rev(self.db, name),
                         tab,
                     )
                 )
-                sse.patch_signals({"_rev": store.reload_rev(self.db, name)})
+                sse.patch_signals({"_rev": store.shipped_rev(self.db, name)})
 
     async def say(self, c: Context, w: Writer) -> None:
         name = c.match.params["app"]
@@ -295,7 +287,7 @@ class FramePage:
                     await self.db.write(store.drop_change, change_id)
                     raise
                 text = "Done. (fake) I'd change that now."
-                await self.db.write(store.finish_change, change_id, name, text, "", False)
+                await self.db.write(store.finish_change, change_id, name, text, "")
                 return
             images = [
                 ((self.config.shots_dir / f).read_bytes(), SHOT_TYPES[Path(f).suffix])
@@ -320,12 +312,12 @@ class FramePage:
                 span.fail(str(exc))
                 return
             await self.db.write(store.set_run, change_id, agent_id, run_id)
-            await self.follow(change_id, name, url, agent_id, run_id, span)
+            await self.follow(change_id, name, agent_id, run_id, span)
 
     async def follow(
-        self, change_id: int, name: str, url: str, agent_id: str, run_id: str, span: Span
+        self, change_id: int, name: str, agent_id: str, run_id: str, span: Span
     ) -> None:
-        """Wait for the Cursor run, then show its branch in the local clone."""
+        """Wait for the Cursor run; its pull request is the change."""
         assert self.cursor is not None
         with span:
             try:
@@ -340,41 +332,26 @@ class FramePage:
                 await self.db.write(store.fail_change, change_id, name, f"No change: {why}")
                 return
             text = run.result[:600] or "Done."
-            clone = self.clone_of(name)
-            if clone is not None:
-                try:
-                    await checkout.preview(clone, run.branch)
-                    await checkout.answers(self.http, url)
-                except CoderError as exc:
-                    text += f" (No local preview: {exc})"
-                    clone = None
-            await self.db.write(
-                store.finish_change, change_id, name, text, run.pr_url, clone is not None
-            )
+            await self.db.write(store.finish_change, change_id, name, text, run.pr_url)
 
     async def settle(self, change_id: int, name: str, action: str, reply: bool = True) -> str:
-        """Ship merges the pull request; Not yet closes it. The clone goes back to main.
+        """Ship merges the pull request; Not yet closes it.
 
         A button gets a short reply; the agent's tool call writes its own.
         """
         row = nudge_data.get_change(self.db, change_id)
         if row is None or row[1] != name or row[2] != "ready":
             return f"change #{change_id} is not ready"
-        pr_url, clone = row[3] or "", self.clone_of(name)
         try:
-            if pr_url:
-                await (self.github.merge if action == "ship" else self.github.close)(pr_url)
-            if clone is not None:
-                await checkout.back(clone)
-                await checkout.answers(self.http, dict(self.config.apps)[name])
+            if row[3]:
+                await (self.github.merge if action == "ship" else self.github.close)(row[3])
         except CoderError as exc:
             await self.db.write(store.add_reply, name, f"That did not work: {exc}")
             return f"change #{change_id} failed: {exc}"
-        reload = action == "ship" or clone is not None
         if reply:
-            await self.db.write(store.apply_action_with_reply, change_id, name, action, reload)
+            await self.db.write(store.apply_action_with_reply, change_id, name, action)
         else:
-            await self.db.write(nudge_data.apply_action, change_id, action, reload)
+            await self.db.write(nudge_data.apply_action, change_id, action)
         return f"change #{change_id} {'shipped' if action == 'ship' else 'dropped'}"
 
     async def act(self, c: Context, w: Writer) -> None:

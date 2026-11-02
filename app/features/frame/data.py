@@ -5,7 +5,7 @@ from typing import Any, cast
 from litewriter import LiteWriter, Tx
 from stario.json import dumps, loads
 
-from app.nudge.data import apply_action, now_ms
+from app.nudge.data import apply_action
 
 MESSAGES_SQL = """
 SELECT m.id, m.data, c.status
@@ -128,11 +128,12 @@ def working_count(db: LiteWriter, app: str) -> int:
     )
 
 
-def reload_rev(db: LiteWriter, app: str) -> int:
-    return db.value(
-        "SELECT coalesce(max(data->>'reload'), 0) FROM changes WHERE app = :app",
+def shipped_rev(db: LiteWriter, app: str) -> int:
+    row = db.one(
+        "SELECT id FROM changes WHERE app = :app AND status = 'shipped' ORDER BY id DESC LIMIT 1",
         app=app,
     )
+    return row[0] if row else 0
 
 
 def list_runs(db: LiteWriter) -> list[tuple]:
@@ -189,17 +190,14 @@ def set_run(tx: Tx, change_id: int, agent_id: str, run_id: str) -> None:
     )
 
 
-def finish_change(tx: Tx, change_id: int, app: str, text: str, pr_url: str, reload: bool) -> None:
+def finish_change(tx: Tx, change_id: int, app: str, text: str, pr_url: str) -> None:
     tx.execute(
         "UPDATE changes"
-        " SET data = json_set(data, '$.status', 'ready', '$.updated', :now, '$.pr_url', :pr,"
-        " '$.reload', CASE WHEN :reload THEN :ms ELSE data->'reload' END)"
+        " SET data = json_set(data, '$.status', 'ready', '$.updated', :now, '$.pr_url', :pr)"
         " WHERE id = :id",
         id=change_id,
         now=_now(),
         pr=pr_url,
-        reload=reload,
-        ms=now_ms(),
     )
     _add_message(tx, app, "nudge", text, change_id, actions=["ship", "not_yet"])
 
@@ -221,8 +219,8 @@ def drop_change(tx: Tx, change_id: int) -> None:
     )
 
 
-def apply_action_with_reply(tx: Tx, change_id: int, app: str, action: str, reload: bool) -> None:
-    apply_action(tx, change_id, action, reload)
+def apply_action_with_reply(tx: Tx, change_id: int, app: str, action: str) -> None:
+    apply_action(tx, change_id, action)
     _add_message(
         tx,
         app,

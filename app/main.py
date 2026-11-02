@@ -38,7 +38,6 @@ async def bootstrap(app: App, span: Span):
             agent,
             model_name,
             instructions,
-            http,
             cursor,
             GitHub(http, config.github_token),
         )

@@ -40,7 +40,6 @@ class Config:
     cursor_model: str
     repo_base: str
     github_token: str
-    checkouts: Path | None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -68,7 +67,4 @@ class Config:
             cursor_model=os.environ.get("CURSOR_MODEL", "").strip(),
             repo_base=os.environ.get("NUDGE_REPO_BASE", "https://github.com/Bobowski").rstrip("/"),
             github_token=os.environ.get("GITHUB_TOKEN", "").strip(),
-            checkouts=Path(raw).expanduser()
-            if (raw := os.environ.get("NUDGE_CHECKOUTS"))
-            else None,
         )

@@ -1,5 +1,4 @@
 import json
-import subprocess
 from functools import partial
 
 import httpx
@@ -54,7 +53,6 @@ def cursor(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_API_KEY", "key")
     monkeypatch.setenv("GITHUB_TOKEN", "token")
     monkeypatch.setattr("app.coder.cursor.POLL", 0)
-    monkeypatch.setattr("app.coder.checkout.RESTART", 0)
 
     def make(remote: Remote):
         transport = httpx.MockTransport(remote)
@@ -103,45 +101,3 @@ async def test_a_failed_run_drops_the_change(cursor):
         page = (await client.get(FRAME.href("alpha"))).text
         assert "No change: Made the title red." in page
         assert 'data-state="idle"' in page
-
-
-def git(cwd, *args):
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
-
-
-async def test_the_local_clone_shows_the_branch_then_goes_back_to_main(
-    cursor, tmp_path, monkeypatch
-):
-    origin, clones = tmp_path / "origin.git", tmp_path / "clones"
-    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
-    git(tmp_path, "clone", "-q", str(origin), str(clones / "alpha"))
-    clone = clones / "alpha"
-    for args in (
-        ("config", "user.email", "t@t"),
-        ("config", "user.name", "t"),
-        ("commit", "-q", "--allow-empty", "-m", "first"),
-        ("push", "-q", "origin", "main"),
-        ("switch", "-q", "-c", "cursor/red"),
-        ("commit", "-q", "--allow-empty", "-m", "red"),
-        ("push", "-q", "origin", "cursor/red"),
-        ("switch", "-q", "main"),
-        ("branch", "-q", "-D", "cursor/red"),
-    ):
-        git(clone, *args)
-    monkeypatch.setenv("NUDGE_CHECKOUTS", str(clones))
-
-    def head():
-        out = subprocess.run(
-            ["git", "log", "-1", "--format=%s"], cwd=clone, capture_output=True, text=True
-        )
-        return out.stdout.strip()
-
-    async with cursor(Remote()) as client:
-        await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
-        await client.drain_tasks()
-        assert head() == "red"
-        mid = await ready_message_id(client)
-        await client.post(
-            ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "not_yet"}
-        )
-        assert head() == "first"

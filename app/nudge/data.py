@@ -8,11 +8,6 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def now_ms() -> int:
-    """A reload stamp: the frame reloads when the newest stamp of its app grows."""
-    return int(datetime.now(UTC).timestamp() * 1000)
-
-
 def get_change(db: LiteWriter, change_id: int) -> tuple | None:
     return db.one(
         "SELECT id, data->>'app' AS app, status, data->>'pr_url' FROM changes WHERE id = :id",
@@ -62,17 +57,14 @@ def start_change(tx: Tx, app: str, brief: str, you_message_id: int) -> int:
     return change_id
 
 
-def apply_action(tx: Tx, change_id: int, action: str, reload: bool) -> None:
+def apply_action(tx: Tx, change_id: int, action: str) -> None:
     tx.execute(
         "UPDATE changes"
-        " SET data = json_set(data, '$.status', :status, '$.updated', :now,"
-        " '$.reload', CASE WHEN :reload THEN :ms ELSE data->'reload' END)"
+        " SET data = json_set(data, '$.status', :status, '$.updated', :now)"
         " WHERE id = :id",
         id=change_id,
         status="shipped" if action == "ship" else "dropped",
         now=_now(),
-        reload=reload,
-        ms=now_ms(),
     )
     tx.execute(
         "UPDATE messages SET data = json_set(data, '$.actions', json('[]'))"
