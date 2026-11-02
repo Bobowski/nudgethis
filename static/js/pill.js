@@ -72,7 +72,7 @@ app.pill = {
       if (!axis) return emit("pill-tap");
       if (axis === "x") {
         place(0, 0);
-        if (Math.abs(dx) > 56) emit("pill-swipe", dx > 0 ? "left" : "right");
+        if (Math.abs(dx) > 56) emit("pill-swipe", dx < 0 ? "left" : "right");
         return;
       }
       const toEdge = atBottom() ? dy > 0 : dy < 0;

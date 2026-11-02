@@ -46,23 +46,25 @@ app.snap = {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
       return null;
     }
+    const root = document.documentElement;
     try {
       const track = await this.track();
       if (!track) return null;
-      const restricted = await this.restrict(track);
       const video = document.createElement("video");
       video.muted = true;
       video.srcObject = this.stream;
       await video.play();
-      if (video.readyState < 2) {
-        await new Promise((resolve) => {
-          video.onloadeddata = resolve;
-        });
+      // Element Capture sends frames only while the iframe is eligible. With no
+      // fresh frame, crop the whole tab instead of drawing an empty video.
+      let restricted = await this.restrict(track);
+      if (restricted && !(await this.fresh(video))) {
+        await track.restrictTo(null);
+        restricted = false;
       }
       if (!restricted) {
-        // The crop path sees the whole tab: hide the pill for a few frames.
-        document.documentElement.classList.add("snapping");
-        await new Promise((resolve) => setTimeout(resolve, 160));
+        root.classList.add("snapping");
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        if (!(await this.fresh(video))) return null;
       }
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
@@ -81,14 +83,25 @@ app.snap = {
         canvas.height = Math.max(1, Math.round(sh));
         ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
       }
-      document.documentElement.classList.remove("snapping");
       video.pause();
       video.srcObject = null;
       return canvas.toDataURL("image/png");
     } catch {
-      document.documentElement.classList.remove("snapping");
       return null;
+    } finally {
+      root.classList.remove("snapping");
     }
+  },
+
+  // True when the video paints a new frame within a second.
+  fresh(video) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 1000);
+      video.requestVideoFrameCallback(() => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
   },
 
   async track() {

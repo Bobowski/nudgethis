@@ -5,7 +5,7 @@ import httpx
 import pytest
 from stario.testing import TestClient
 
-from app.features.frame.urls import ACT, FRAME, SAY
+from app.features.frame.urls import FRAME, SAY, UNDO
 from app.main import bootstrap
 from tests.conftest import _env, signed_in, use_transport
 from tests.test_frame import PNG
@@ -72,9 +72,9 @@ def statuses(tmp_path) -> list[str]:
     return [r[0] for r in rows]
 
 
-async def undo_message_id(client) -> int:
+async def live_change_id(client) -> int:
     page = (await client.get(FRAME.href("alpha"))).text
-    start = page.index("$message_id = ") + len("$message_id = ")
+    start = page.index("$change_id = ") + len("$change_id = ")
     return int(page[start : page.index(";", start)])
 
 
@@ -102,10 +102,8 @@ async def test_undo_is_a_follow_up_run_that_goes_live(cursor, tmp_path):
     async with cursor(remote) as client:
         await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
         await client.drain_tasks()
-        mid = await undo_message_id(client)
-        r = await client.post(
-            ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "undo"}
-        )
+        cid = await live_change_id(client)
+        r = await client.post(UNDO.href("alpha"), json={"tab": "t1", "change_id": cid})
         assert r.status_code == 204
         await client.drain_tasks()
         assert "Did run-2." in (await client.get(FRAME.href("alpha"))).text

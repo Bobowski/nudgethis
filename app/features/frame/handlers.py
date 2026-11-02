@@ -25,7 +25,7 @@ from app.coder.cursor import Cursor
 from app.coder.yard import Yard
 from app.config import Config
 from app.features.frame import data as store
-from app.features.frame.urls import ACT, FRAME, FRAME_LIVE, SAY
+from app.features.frame.urls import FRAME, FRAME_LIVE, SAY, UNDO
 from app.features.frame.views import render
 from app.nudge import agent as nudge
 from app.nudge import data as nudge_data
@@ -92,7 +92,7 @@ class FramePage:
         app.add(FRAME, self.show)
         app.add(FRAME_LIVE, self.live)
         app.add(SAY, self.say)
-        app.add(ACT, self.act)
+        app.add(UNDO, self.undo_command)
 
     def url_of(self, name: str) -> str | None:
         return dict(self.config.apps).get(name)
@@ -112,6 +112,7 @@ class FramePage:
             list(reversed(self.db.query(store.MESSAGES_SQL, store.message_row))),
             name,
             url,
+            store.list_timeline(self.db, name),
             store.get_phase(self.db, name),
             store.live_rev(self.db, name),
             tab,
@@ -143,6 +144,7 @@ class FramePage:
                         list(reversed(messages)),
                         name,
                         url,
+                        store.list_timeline(self.db, name),
                         store.get_phase(self.db, name),
                         store.live_rev(self.db, name),
                         tab,
@@ -393,30 +395,26 @@ class FramePage:
             )
             await self.launch(undo_id, name, span, lambda: cursor.follow_up(agent_id, text))
 
-    async def act(self, c: Context, w: Writer) -> None:
+    async def undo_command(self, c: Context, w: Writer) -> None:
         name = c.match.params["app"]
         if self.url_of(name) is None:
             w.text("no such app", status=404)
             return
         signals = await read_signals(c.req)
         tab = str(signals.get("tab", ""))
-        message_id = signals.get("message_id")
-        action = signals.get("action")
+        change_id = signals.get("change_id")
         if not tab.isalnum() or len(tab) > 32:
             w.text("tab must be a short id", status=400)
             return
-        if type(message_id) is not int or action != "undo":
-            w.text("bad action", status=400)
+        if type(change_id) is not int:
+            w.text("change_id must be a number", status=400)
             return
-        message = store.get_message(self.db, message_id)
-        if message is None or message.app != name:
-            w.text("no such message", status=404)
+        row = nudge_data.get_change(self.db, change_id)
+        if row is None or row[1] != name:
+            w.text("no such change", status=404)
             return
-        if message.change_status != "live" or message.change_id is None:
+        if row[2] != "live":
             w.text("the change is not live", status=409)
             return
-        if action not in message.actions:
-            w.text("the message has no such action", status=400)
-            return
         w.empty()
-        await self.start_undo(c.app, message.change_id, name, c.span)
+        await self.start_undo(c.app, change_id, name, c.span)
