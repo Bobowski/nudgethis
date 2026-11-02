@@ -10,7 +10,7 @@ def _now() -> str:
 
 def get_change(db: LiteWriter, change_id: int) -> tuple | None:
     return db.one(
-        "SELECT id, data->>'app' AS app, status FROM changes WHERE id = :id",
+        "SELECT id, data->>'app' AS app, status, data->>'pr_url' FROM changes WHERE id = :id",
         id=change_id,
     )
 

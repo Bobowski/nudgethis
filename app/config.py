@@ -36,6 +36,10 @@ class Config:
     effort: str
     history: int
     timeout: float
+    cursor_api_key: str
+    cursor_model: str
+    repo_base: str
+    github_token: str
 
     @classmethod
     def from_env(cls) -> Config:
@@ -59,4 +63,8 @@ class Config:
             effort=effort,
             history=int(os.environ.get("NUDGE_HISTORY", "30")),
             timeout=float(os.environ.get("NUDGE_TIMEOUT", "60")),
+            cursor_api_key=os.environ.get("CURSOR_API_KEY", "").strip(),
+            cursor_model=os.environ.get("CURSOR_MODEL", "").strip(),
+            repo_base=os.environ.get("NUDGE_REPO_BASE", "https://github.com/Bobowski").rstrip("/"),
+            github_token=os.environ.get("GITHUB_TOKEN", "").strip(),
         )

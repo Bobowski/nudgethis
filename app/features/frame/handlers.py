@@ -19,6 +19,9 @@ from pydantic_ai.messages import (
 from stario import App, Context, Span, Writer
 from stario.datastar import SSE, read_signals
 
+from app.coder import CoderError
+from app.coder.cursor import Cursor
+from app.coder.github import GitHub
 from app.config import Config
 from app.features.frame import data as store
 from app.features.frame.urls import ACT, FRAME, FRAME_LIVE, SAY
@@ -80,6 +83,8 @@ class FramePage:
     agent: Agent[TurnDeps, str]
     model_name: str
     instructions: str
+    cursor: Cursor | None
+    github: GitHub
 
     def register(self, app: App) -> None:
         app.add(FRAME, self.show)
@@ -89,6 +94,14 @@ class FramePage:
 
     def url_of(self, name: str) -> str | None:
         return dict(self.config.apps).get(name)
+
+    def resume(self, app: App, span: Span) -> None:
+        """Follow the Cursor runs that were going when the process stopped."""
+        for change_id, name, _brief, agent_id, run_id in store.list_runs(self.db):
+            if self.url_of(name) is not None and self.cursor is not None:
+                app.create_task(
+                    self.follow(change_id, name, agent_id, run_id, span.step("nudge.resume"))
+                )
 
     def pod(self, name: str, url: str, tab: str):
         return render(
@@ -171,8 +184,10 @@ class FramePage:
         you_id, placeholder_id = await self.db.write(store.add_request, name, text, names)
         step = c.span.step("nudge.turn")
 
-        def start_ready(change_id: int) -> None:
-            c.app.create_task(self.ready(change_id, name, step.step("nudge.fake")))
+        def start_ready(change_id: int, brief: str) -> None:
+            c.app.create_task(
+                self.code(change_id, name, url, brief, names, step.step("nudge.code"))
+            )
 
         c.app.create_task(
             self.turn(
@@ -205,6 +220,7 @@ class FramePage:
                 app_name=name,
                 you_message_id=you_id,
                 start_ready=start_ready,
+                settle=lambda change_id, action: self.settle(change_id, name, action, reply=False),
             )
             prompt: list[Any] = [text] if text else []
             for fname in shot_names:
@@ -253,15 +269,90 @@ class FramePage:
                 }
             )
 
-    async def ready(self, change_id: int, app: str, span: Span) -> None:
+    async def code(
+        self,
+        change_id: int,
+        name: str,
+        url: str,
+        brief: str,
+        shot_names: list[str],
+        span: Span,
+    ) -> None:
         with span:
-            span.attr("change.id", change_id)
+            span.attrs({"change.id": change_id, "coder": "cursor" if self.cursor else "fake"})
+            if self.cursor is None:
+                try:
+                    await asyncio.sleep(self.config.fake_delay)
+                except asyncio.CancelledError:
+                    await self.db.write(store.drop_change, change_id)
+                    raise
+                text = "Done. (fake) I'd change that now."
+                await self.db.write(store.finish_change, change_id, name, text, "")
+                return
+            images = [
+                ((self.config.shots_dir / f).read_bytes(), SHOT_TYPES[Path(f).suffix])
+                for f in shot_names
+            ]
+            prompt = (
+                f"{brief}\n\nThe app is {name}, live at {url}."
+                + (
+                    " The first image is the screen with the user's marks;"
+                    " the second is the same screen without them."
+                    if images
+                    else ""
+                )
+                + " Keep the change small and run `just check` before you finish."
+            )
             try:
-                await asyncio.sleep(self.config.fake_delay)
-            except asyncio.CancelledError:
-                await self.db.write(store.drop_change, change_id)
-                raise
-            await self.db.write(store.finish_change, change_id, app)
+                agent_id, run_id = await self.cursor.start(
+                    f"{self.config.repo_base}/{name}", prompt, images, brief
+                )
+            except CoderError as exc:
+                await self.db.write(store.fail_change, change_id, name, f"I could not start: {exc}")
+                span.fail(str(exc))
+                return
+            await self.db.write(store.set_run, change_id, agent_id, run_id)
+            await self.follow(change_id, name, agent_id, run_id, span)
+
+    async def follow(
+        self, change_id: int, name: str, agent_id: str, run_id: str, span: Span
+    ) -> None:
+        """Wait for the Cursor run; its pull request is the change."""
+        assert self.cursor is not None
+        with span:
+            try:
+                run = await self.cursor.wait(agent_id, run_id)
+            except CoderError as exc:
+                await self.db.write(store.fail_change, change_id, name, f"The coder failed: {exc}")
+                span.fail(str(exc))
+                return
+            span.attrs({"cursor.status": run.status, "cursor.pr": run.pr_url})
+            if run.status != "FINISHED" or not run.pr_url:
+                why = run.result[:300] or run.status.lower()
+                await self.db.write(store.fail_change, change_id, name, f"No change: {why}")
+                return
+            text = run.result[:600] or "Done."
+            await self.db.write(store.finish_change, change_id, name, text, run.pr_url)
+
+    async def settle(self, change_id: int, name: str, action: str, reply: bool = True) -> str:
+        """Ship merges the pull request; Not yet closes it.
+
+        A button gets a short reply; the agent's tool call writes its own.
+        """
+        row = nudge_data.get_change(self.db, change_id)
+        if row is None or row[1] != name or row[2] != "ready":
+            return f"change #{change_id} is not ready"
+        try:
+            if row[3]:
+                await (self.github.merge if action == "ship" else self.github.close)(row[3])
+        except CoderError as exc:
+            await self.db.write(store.add_reply, name, f"That did not work: {exc}")
+            return f"change #{change_id} failed: {exc}"
+        if reply:
+            await self.db.write(store.apply_action_with_reply, change_id, name, action)
+        else:
+            await self.db.write(nudge_data.apply_action, change_id, action)
+        return f"change #{change_id} {'shipped' if action == 'ship' else 'dropped'}"
 
     async def act(self, c: Context, w: Writer) -> None:
         name = c.match.params["app"]
@@ -289,4 +380,4 @@ class FramePage:
             w.text("the message has no such action", status=400)
             return
         w.empty()
-        await self.db.write(store.apply_action_with_reply, message.change_id, name, action)
+        await self.settle(message.change_id, name, action)

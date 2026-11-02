@@ -77,10 +77,12 @@ def schema(tx: Tx) -> None:
     tx.execute("CREATE INDEX IF NOT EXISTS messages_app ON messages(app)")
     tx.execute("CREATE INDEX IF NOT EXISTS messages_at ON messages(at)")
     tx.execute("CREATE INDEX IF NOT EXISTS changes_app_status ON changes(app, status)")
-    # Jobs die with the process: a change left working is dropped, a reply left
-    # thinking admits it was lost.
+    # A fake job dies with the process, so its change is dropped. A Cursor run
+    # goes on in the cloud: bootstrap follows it again. A reply left thinking
+    # admits it was lost.
     tx.execute(
-        "UPDATE changes SET data = json_set(data, '$.status', 'dropped') WHERE status = 'working'"
+        "UPDATE changes SET data = json_set(data, '$.status', 'dropped')"
+        " WHERE status = 'working' AND data->>'agent_id' IS NULL"
     )
     tx.execute(
         "UPDATE messages SET data = json_set(data, '$.text',"
@@ -134,6 +136,14 @@ def shipped_rev(db: LiteWriter, app: str) -> int:
     return row[0] if row else 0
 
 
+def list_runs(db: LiteWriter) -> list[tuple]:
+    """Changes whose Cursor run is still going: id, app, brief, agent id, run id."""
+    return db.query(
+        "SELECT id, app, data->>'brief', data->>'agent_id', data->>'run_id' FROM changes"
+        " WHERE status = 'working' AND data->>'agent_id' IS NOT NULL"
+    )
+
+
 def _add_message(
     tx: Tx, app: str, role: str, text: str, change_id: int | None, **extra: object
 ) -> int:
@@ -170,22 +180,35 @@ def set_reply(tx: Tx, message_id: int, text: str, change_id: int | None) -> None
     )
 
 
-def finish_change(tx: Tx, change_id: int, app: str) -> None:
+def set_run(tx: Tx, change_id: int, agent_id: str, run_id: str) -> None:
+    tx.execute(
+        "UPDATE changes SET data = json_set(data, '$.agent_id', :agent, '$.run_id', :run)"
+        " WHERE id = :id",
+        id=change_id,
+        agent=agent_id,
+        run=run_id,
+    )
+
+
+def finish_change(tx: Tx, change_id: int, app: str, text: str, pr_url: str) -> None:
     tx.execute(
         "UPDATE changes"
-        " SET data = json_set(data, '$.status', 'ready', '$.updated', :now)"
+        " SET data = json_set(data, '$.status', 'ready', '$.updated', :now, '$.pr_url', :pr)"
         " WHERE id = :id",
         id=change_id,
         now=_now(),
+        pr=pr_url,
     )
-    _add_message(
-        tx,
-        app,
-        "nudge",
-        "Done. (fake) I'd change that now.",
-        change_id,
-        actions=["ship", "not_yet"],
-    )
+    _add_message(tx, app, "nudge", text, change_id, actions=["ship", "not_yet"])
+
+
+def fail_change(tx: Tx, change_id: int, app: str, text: str) -> None:
+    drop_change(tx, change_id)
+    _add_message(tx, app, "nudge", text, change_id)
+
+
+def add_reply(tx: Tx, app: str, text: str) -> None:
+    _add_message(tx, app, "nudge", text, None)
 
 
 def drop_change(tx: Tx, change_id: int) -> None:
