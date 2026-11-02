@@ -89,19 +89,6 @@ def schema(tx: Tx) -> None:
     )
 
 
-def get_message(db: LiteWriter, message_id: int) -> Message | None:
-    return db.one(
-        """
-        SELECT m.id, m.data, c.status
-        FROM messages m
-        LEFT JOIN changes c ON c.id = json_extract(m.data, '$.change_id')
-        WHERE m.id = :id
-        """,
-        message_row,
-        id=message_id,
-    )
-
-
 def history_rows(db: LiteWriter, before_id: int, limit: int) -> list[Message]:
     return list(
         reversed(
@@ -129,6 +116,15 @@ def get_phase(db: LiteWriter, app: str) -> str:
         )
     }
     return next((s for s in ("deploying", "working") if s in statuses), "")
+
+
+def list_timeline(db: LiteWriter, app: str) -> list[tuple]:
+    """The changes of the app, newest first: id, brief, status, updated."""
+    return db.query(
+        "SELECT id, data->>'brief', status, data->>'updated' FROM changes"
+        " WHERE app = :app ORDER BY id DESC LIMIT 50",
+        app=app,
+    )
 
 
 def live_rev(db: LiteWriter, app: str) -> int:

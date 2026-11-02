@@ -1,6 +1,6 @@
 import re
 
-from app.features.frame.urls import ACT, FRAME, FRAME_LIVE, SAY
+from app.features.frame.urls import FRAME, FRAME_LIVE, SAY, UNDO
 
 TAB = {"datastar": '{"tab": "t1"}'}
 PNG = (
@@ -93,11 +93,11 @@ async def test_a_shot_is_saved_served_and_shown(client, tmp_path):
     assert r.content == saved[0].read_bytes()
 
 
-async def done_message_id(client, app="alpha"):
+async def live_change_id(client, app="alpha"):
     await client.post(SAY.href(app), json={"tab": "t1", "text": "change it", "shots": []})
     await client.drain_tasks()
     page = (await client.get(FRAME.href(app))).text
-    m = re.search(r"\$message_id\s*=\s*(\d+)", page)
+    m = re.search(r"\$change_id\s*=\s*(\d+)", page)
     assert m is not None
     return int(m.group(1))
 
@@ -123,44 +123,48 @@ async def test_a_live_change_reloads_the_frame(client):
 
 
 async def test_undo_reverts_the_change_and_reloads_again(client):
-    mid = await done_message_id(client)
-    r = await client.post(
-        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "undo"}
-    )
+    cid = await live_change_id(client)
+    r = await client.post(UNDO.href("alpha"), json={"tab": "t1", "change_id": cid})
     assert r.status_code == 204
     await client.drain_tasks()
     page = (await client.get(FRAME.href("alpha"))).text
     assert "Undone. (fake)" in page
-    assert 'class="act undo"' not in page
+    assert "#1 · Undone" in page
+    assert "#2 · Live" in page
     async with client.stream("GET", FRAME_LIVE.href("alpha"), params=TAB, timeout=2) as live:
         assert await next_rev(live.iter_events()) == 2
 
 
 async def test_undo_twice_is_409(client):
-    mid = await done_message_id(client)
-    body = {"tab": "t1", "message_id": mid, "action": "undo"}
-    assert (await client.post(ACT.href("alpha"), json=body)).status_code == 204
-    assert (await client.post(ACT.href("alpha"), json=body)).status_code == 409
+    cid = await live_change_id(client)
+    body = {"tab": "t1", "change_id": cid}
+    assert (await client.post(UNDO.href("alpha"), json=body)).status_code == 204
+    assert (await client.post(UNDO.href("alpha"), json=body)).status_code == 409
 
 
-async def test_act_on_a_message_of_another_app_is_404(client):
-    mid = await done_message_id(client, app="beta")
-    r = await client.post(
-        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "undo"}
-    )
+async def test_undo_of_another_app_is_404(client):
+    cid = await live_change_id(client, app="beta")
+    r = await client.post(UNDO.href("alpha"), json={"tab": "t1", "change_id": cid})
     assert r.status_code == 404
 
 
-async def test_unknown_action_is_400(client):
-    mid = await done_message_id(client)
-    r = await client.post(
-        ACT.href("alpha"), json={"tab": "t1", "message_id": mid, "action": "ship"}
-    )
+async def test_a_bad_change_id_is_400(client):
+    await live_change_id(client)
+    r = await client.post(UNDO.href("alpha"), json={"tab": "t1", "change_id": "1"})
     assert r.status_code == 400
 
 
 async def test_a_live_change_leaves_the_pill_idle(client):
-    await done_message_id(client)
+    await live_change_id(client)
     page = (await client.get(FRAME.href("alpha"))).text
     assert 'data-state="idle"' in page
     assert "Ready to ship" not in page
+
+
+async def test_the_panel_has_a_chat_composer_and_a_timeline(client):
+    await live_change_id(client)
+    page = (await client.get(FRAME.href("alpha"))).text
+    assert 'id="chatbox"' in page
+    assert 'id="composer"' in page
+    assert "#1 · Live" in page
+    assert 'class="statusline"' not in page

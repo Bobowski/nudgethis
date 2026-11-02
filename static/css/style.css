@@ -24,7 +24,6 @@
 
   --spring: cubic-bezier(0.2, 1.25, 0.35, 1);
   --ease: cubic-bezier(0.2, 0.9, 0.2, 1);
-  --aside: min(400px, 86vw);
   --edge: max(12px, env(safe-area-inset-top));
   --edge-bottom: max(14px, env(safe-area-inset-bottom));
 }
@@ -109,6 +108,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   transition: transform 0.55s var(--ease), border-radius 0.55s var(--ease);
 }
 .stage iframe {
+  /* Element Capture (the snap) needs the iframe to be its own stacking context. */
+  isolation: isolate;
   position: absolute;
   inset: 0;
   width: 100%;
@@ -117,23 +118,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   display: block;
   background: var(--paper);
 }
-.stage.aside-left,
-.stage.aside-right {
-  border-radius: 22px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px -20px var(--glass-shade);
-}
-.stage.aside-left { transform: translateX(var(--aside)) scale(0.94); }
-.stage.aside-right { transform: translateX(calc(-1 * var(--aside))) scale(0.94); }
-
-.scrim {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
+.stage.away { transform: translateX(-14%) scale(0.96); }
 
 /* ---------- the pill and its cards ---------- */
 
@@ -199,14 +184,12 @@ button:disabled { opacity: 0.4; cursor: default; }
   transition: background 0.4s, box-shadow 0.4s;
 }
 .orb.unread,
-.pill[data-state="ready"] .orb,
 .pill[data-state="busy"] .orb {
   background: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 22%, transparent), 0 0 12px var(--glow);
 }
 .pill[data-state="busy"] .orb { animation: breathe 1.6s ease-in-out infinite; }
 
-.pill[data-state="ready"],
 .pill:has(.orb.unread) {
   box-shadow:
     inset 0 1px 0 var(--glass-sheen),
@@ -214,7 +197,7 @@ button:disabled { opacity: 0.4; cursor: default; }
     0 0 28px 2px var(--glow),
     0 12px 32px -10px var(--glass-shade);
 }
-.pill[data-state="ready"] { animation: glow 2.6s ease-in-out infinite; }
+.pill:has(.orb.unread):not(.bounce) { animation: glow 2.6s ease-in-out infinite; }
 
 @keyframes breathe { 50% { scale: 0.7; opacity: 0.7; } }
 @keyframes glow {
@@ -262,14 +245,23 @@ button:disabled { opacity: 0.4; cursor: default; }
 @keyframes rise { from { opacity: 0; translate: 0 -10px; scale: 0.97; } }
 @keyframes sink { from { opacity: 0; translate: 0 10px; scale: 0.97; } }
 
+/* The pill becomes the composer: the card opens out of a pill-sized shape, in place. */
+#composer { animation: morph 0.45s var(--spring); }
+@keyframes morph {
+  from { clip-path: inset(calc(50% - 20px) calc(50% - 70px) round 999px); opacity: 0.6; }
+  to { clip-path: inset(0 round 22px); opacity: 1; }
+}
+.pill:not(.bounce) { animation: pop 0.35s var(--spring); }
+@keyframes pop { from { scale: 0.8; opacity: 0; } }
+
 .peek { width: min(420px, 100%); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .peek p { margin: 0; white-space: pre-wrap; overflow-wrap: break-word; }
-.peek .acts { margin: 0; }
+.peek .act.undo { margin: 0; align-self: flex-start; }
 .peek .chip { align-self: flex-start; border-color: transparent; color: var(--dim); padding-left: 0; }
 
 /* ---------- composer ---------- */
 
-#composer .hint { margin: 2px 6px 8px; font-size: 0.8rem; color: var(--dim); }
+.composer .hint { margin: 2px 6px 8px; font-size: 0.8rem; color: var(--dim); }
 
 .pend { display: flex; gap: 8px; margin: 2px 4px 10px; }
 .pendshot { position: relative; display: inline-block; }
@@ -319,6 +311,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   border: 0;
 }
 .round.snap { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.round.close { color: var(--dim); }
 .round.send { background: var(--accent); color: var(--on-accent); }
 .icon {
   width: 18px;
@@ -330,37 +323,77 @@ button:disabled { opacity: 0.4; cursor: default; }
   stroke-linejoin: round;
 }
 
-/* ---------- history: the conversation behind the app ---------- */
+/* ---------- the panel: chat and timeline, over the whole screen ---------- */
 
 #history {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  width: var(--aside);
+  inset: 0;
+  z-index: 15;
   display: flex;
   flex-direction: column;
-  padding: var(--edge) 0 var(--edge-bottom);
-  opacity: 0;
-  transition: opacity 0.4s var(--ease);
+  padding: var(--edge) 0 0;
+  background: var(--tint);
+  transform: translateX(100%);
+  transition: transform 0.5s var(--ease);
 }
-#history.right { left: auto; right: 0; }
-#history.open { opacity: 1; }
+#history.open { transform: none; }
 
 .histhead {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  padding: 6px 18px 12px;
-  border-bottom: 1px solid var(--hairline);
-  font-size: 0.85rem;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px 10px 18px;
+  font-size: 0.88rem;
 }
 .histhead .home { color: var(--dim); text-decoration: none; }
 .histhead .home:hover { color: var(--ink); }
-.histhead .appname { font-weight: 600; }
-.histhead .appurl { width: 100%; color: var(--dim); font-size: 0.78rem; }
+.histhead .appname { font-weight: 600; flex: 1; }
+
+.tabs {
+  align-self: center;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+.tabs button { border: 0; padding: 5px 18px; font-size: 0.85rem; color: var(--dim); }
+.tabs button.on { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px var(--glass-shade); }
+
+.statusline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 18px 6px;
+  font-size: 0.82rem;
+  color: var(--dim);
+}
+.statusline .inkloop { width: 30px; flex: none; }
+
+.chatfoot { padding: 8px 12px var(--edge-bottom); }
+.chatfoot .composer { width: 100%; animation: none; }
+
+.timeline {
+  flex: 1;
+  margin: 0;
+  padding: 6px 18px var(--edge-bottom);
+  list-style: none;
+  overflow-y: auto;
+}
+.step {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.step .when { font-size: 0.75rem; color: var(--dim); }
+.step .brief { grid-column: 1; margin: 0; overflow-wrap: anywhere; }
+.step .status { grid-column: 1; font-size: 0.78rem; color: var(--dim); }
+.step .undo { grid-column: 2; grid-row: 1 / span 3; }
+.step.live .status { color: var(--accent); font-weight: 600; }
+.step.undone .brief, .step.dropped .brief { color: var(--dim); }
 
 #msgs {
   flex: 1;
@@ -373,7 +406,6 @@ button:disabled { opacity: 0.4; cursor: default; }
   gap: 0.7rem;
 }
 
-#history .write { align-self: center; margin-top: 10px; }
 
 .msg { max-width: 88%; }
 .msg .tag {
@@ -404,9 +436,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .msg.nudge { align-self: flex-start; }
 
-.acts { display: flex; gap: 8px; margin-top: 8px; }
-.act.ship { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
-.act.not_yet { color: var(--dim); }
+.act.undo { margin-top: 8px; font-size: 0.82rem; }
+.step .act.undo { margin-top: 0; }
 
 .empty { color: var(--dim); font-size: 0.85rem; }
 .working { align-self: flex-start; }
@@ -472,7 +503,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 @media (prefers-reduced-motion: reduce) {
   .stage, .pill, #history { transition: none; }
-  .pill.bounce, .card, .pill[data-state="ready"], .pill[data-state="busy"] .orb { animation: none; }
+  .pill, .pill.bounce, .card, #composer, .pill[data-state="busy"] .orb { animation: none; }
   .inkloop path { animation: none; stroke-dasharray: none; }
   .shipmark.play path { animation: none; stroke-dashoffset: 0; }
 }

@@ -4,11 +4,17 @@ from stario.markup import HtmlElement, svg
 
 from app.common.shell import page
 from app.features.frame.data import Message
-from app.features.frame.urls import ACT, FRAME_LIVE, SAY
+from app.features.frame.urls import FRAME_LIVE, SAY, UNDO
 from app.features.home.urls import HOME
 from app.features.shots.urls import SHOT
 
-ACTION_LABELS = {"undo": "Undo"}
+STATUS_LABELS = {
+    "working": "Working",
+    "deploying": "Deploying",
+    "live": "Live",
+    "undone": "Undone",
+    "dropped": "Failed",
+}
 
 INK_LOOP = svg.Svg(
     {"viewBox": "0 0 48 12", "class": "inkloop", "aria-hidden": "true"},
@@ -21,29 +27,26 @@ SNAP_ICON = svg.Svg(
     svg.Circle({"cx": "12", "cy": "13.5", "r": "3.2"}),
 )
 
+CLOSE_ICON = svg.Svg(
+    {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
+    svg.Path({"d": "M7 7l10 10M17 7 7 17"}),
+)
+
 SEND_ICON = svg.Svg(
     {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
     svg.Path({"d": "M12 19V5M6 11l6-6 6 6"}),
 )
 
 
-def acts(m: Message, current: str) -> HtmlElement:
-    return h.Form(
-        {"class": "acts"},
+def undo_button(change_id: int, current: str) -> HtmlElement:
+    return h.Button(
+        {"type": "button", "class": "act undo"},
         data.on(
-            "submit",
-            at.post(ACT.href(current), include=["tab", "message_id", "action"])
-            + "; $_peek = false",
-            prevent=True,
+            "click",
+            f"$change_id = {change_id}; $_peek = false; "
+            + at.post(UNDO.href(current), include=["tab", "change_id"]),
         ),
-        *[
-            h.Button(
-                {"type": "submit", "class": f"act {a}"},
-                data.on("click", f"$message_id = {m.id}; $action = '{a}'"),
-                ACTION_LABELS.get(a, a),
-            )
-            for a in m.actions
-        ],
+        "Undo",
     )
 
 
@@ -73,7 +76,106 @@ def message_li(m: Message, current: str) -> HtmlElement:
         {"class": "msg nudge"},
         tag,
         h.P(m.text),
-        acts(m, current) if m.actions else None,
+        undo_button(m.change_id, current) if "undo" in m.actions and m.change_id else None,
+    )
+
+
+def composer(name: str, docked: bool) -> HtmlElement:
+    """The message form. Docked, it opens out of the pill; in the panel, it stays open."""
+    return h.Form(
+        {"id": "composer" if docked else "chatbox", "class": "glass card composer"},
+        data.show("$_compose") if docked else None,
+        data.on(
+            "submit",
+            at.post(SAY.href(name), include=["tab", "text", "shots"])
+            + ("; $_compose = false" if docked else ""),
+            prevent=True,
+        ),
+        data.indicator("_sending"),
+        h.P(
+            {"class": "hint", "role": "status"},
+            data.show("$_hint"),
+            data.text("$_hint"),
+        ),
+        h.Div(
+            {"class": "pend"},
+            data.show("$shots.length > 0"),
+            *[
+                h.Span(
+                    {"class": "pendshot"},
+                    data.show(f"$shots.length > {i}"),
+                    h.Img(
+                        {"alt": f"shot {i + 1}"},
+                        data.attr("src", f"$shots.length > {i} && $shots[{i}]"),
+                    ),
+                    h.Button(
+                        {
+                            "type": "button",
+                            "class": "unshot",
+                            "aria-label": "Remove",
+                        },
+                        data.on(
+                            "click",
+                            f"$shots = $shots.filter((s, j) => j !== {i})",
+                        ),
+                        "×",
+                    ),
+                )
+                for i in range(2)
+            ],
+        ),
+        h.Div(
+            {"class": "composerow"},
+            h.Button(
+                {"type": "button", "class": "round close", "aria-label": "Close"},
+                data.on("click", "$_compose = false"),
+                CLOSE_ICON,
+            )
+            if docked
+            else None,
+            h.Button(
+                {"type": "button", "class": "round snap", "aria-label": "Snap"},
+                data.on(
+                    "click",
+                    "app.snap.go(v => $shots = v, h => $_hint = h)",
+                ),
+                data.attr("disabled", "$_sending"),
+                SNAP_ICON,
+            ),
+            h.Textarea(
+                {
+                    "rows": "1",
+                    "maxlength": 2000,
+                    "placeholder": "Say what you want…",
+                    "aria-label": "message",
+                },
+                data.bind("text"),
+                data.effect("$_compose && setTimeout(() => el.focus(), 60)") if docked else None,
+                data.on(
+                    "keydown",
+                    "evt.key === 'Enter' && !evt.shiftKey"
+                    " && (evt.preventDefault(), el.form.requestSubmit())",
+                ),
+            ),
+            h.Button(
+                {"type": "submit", "class": "round send", "aria-label": "Send"},
+                data.attr(
+                    "disabled",
+                    "$_sending || ($text.trim() === '' && $shots.length === 0)",
+                ),
+                SEND_ICON,
+            ),
+        ),
+        h.Input(
+            {"type": "file", "accept": "image/*", "hidden": True},
+            data.init("app.snap.input(el)"),
+            data.on(
+                "change",
+                "app.snap.pick(evt, v => $shots = v); $_hint = ''",
+            ),
+        )
+        if docked
+        else None,
     )
 
 
@@ -81,6 +183,7 @@ def render(
     messages: list[Message],
     name: str,
     url: str,
+    timeline: list[tuple],
     phase: str,
     rev: int,
     tab: str,
@@ -94,6 +197,14 @@ def render(
         state, label = "busy", phase.capitalize()
     else:
         state, label = "idle", name
+    active = next((row for row in timeline if row[2] in ("working", "deploying")), None)
+    if any(m.thinking for m in here):
+        doing = "Nudge is thinking."
+    elif active:
+        verb = "Deploying" if active[2] == "deploying" else "The coder is working on"
+        doing = f"{verb} #{active[0]}: {active[1]}"
+    else:
+        doing = ""
     latest_id = latest.id if latest else 0
     unread = f"$_seen < {latest_id}"
     peek = latest
@@ -106,8 +217,7 @@ def render(
                     "tab": tab,
                     "text": "",
                     "shots": [],
-                    "message_id": 0,
-                    "action": "",
+                    "change_id": 0,
                     "_rev": rev,
                     "_dock": "top",
                     "_seen": 0,
@@ -128,15 +238,34 @@ def render(
             ),
             h.Aside(
                 {"id": "history"},
-                data.classes({"open": "$_history !== ''", "right": "$_history === 'right'"}),
+                data.class_("open", "$_history !== ''"),
                 h.Header(
                     {"class": "histhead"},
-                    h.A({"href": HOME.href(), "class": "home"}, "nudgethis"),
+                    h.A({"href": HOME.href(), "class": "home"}, "‹ nudgethis"),
                     h.Span({"class": "appname"}, name),
-                    h.Span({"class": "appurl"}, url),
+                    h.Button(
+                        {"type": "button", "class": "round close", "aria-label": "Back to the app"},
+                        data.on("click", "$_history = ''"),
+                        CLOSE_ICON,
+                    ),
                 ),
+                h.Div(
+                    {"class": "glass tabs", "role": "tablist"},
+                    *[
+                        h.Button(
+                            {"type": "button", "role": "tab"},
+                            data.class_("on", f"$_history === '{key}'"),
+                            data.attr("aria-selected", f"$_history === '{key}'"),
+                            data.on("click", f"$_history = '{key}'"),
+                            label,
+                        )
+                        for key, label in (("chat", "Chat"), ("timeline", "Timeline"))
+                    ],
+                ),
+                h.P({"class": "statusline", "role": "status"}, INK_LOOP, doing) if doing else None,
                 h.Ol(
                     {"id": "msgs"},
+                    data.show("$_history === 'chat'"),
                     data.init("el.pod ??= app.pod(el)"),
                     *(
                         [message_li(m, name) for m in messages]
@@ -147,24 +276,36 @@ def render(
                             )
                         ]
                     ),
-                    h.Li({"class": "working"}, INK_LOOP)
-                    if phase and not (messages and messages[-1].thinking)
-                    else None,
                 ),
-                h.Button(
-                    {"type": "button", "class": "glass chip write"},
-                    data.on("click", "$_history = ''; $_compose = true"),
-                    "Say something",
+                h.Ol(
+                    {"class": "timeline"},
+                    data.show("$_history === 'timeline'"),
+                    *(
+                        [
+                            h.Li(
+                                {"class": f"step {status}"},
+                                h.Span({"class": "when"}, (updated or "")[:16].replace("T", " ")),
+                                h.P({"class": "brief"}, brief),
+                                h.Span(
+                                    {"class": "status"},
+                                    f"#{cid} · {STATUS_LABELS.get(status, status)}",
+                                ),
+                                undo_button(cid, name) if status == "live" else None,
+                            )
+                            for cid, brief, status, updated in timeline
+                        ]
+                        or [h.Li({"class": "empty"}, "No changes yet.")]
+                    ),
+                ),
+                h.Div(
+                    {"class": "chatfoot"},
+                    data.show("$_history === 'chat'"),
+                    composer(name, docked=False),
                 ),
             ),
             h.Div(
                 {"class": "stage"},
-                data.classes(
-                    {
-                        "aside-left": "$_history === 'left'",
-                        "aside-right": "$_history === 'right'",
-                    }
-                ),
+                data.class_("away", "$_history !== ''"),
                 h.Iframe(
                     {"id": "app-frame", "src": url, "title": name},
                     data.ignore_morph(),
@@ -184,7 +325,8 @@ def render(
                     data.on("pill-pull", "$_peek = false; $_compose = true"),
                     data.on(
                         "pill-swipe",
-                        "$_peek = false; $_history = evt.detail; $_seen = +el.dataset.latest",
+                        "evt.detail === 'left' && ($_peek = false, $_history = 'chat',"
+                        " $_seen = +el.dataset.latest)",
                     ),
                     data.on(
                         "pill-tap",
@@ -210,6 +352,7 @@ def render(
                             "aria-label": "Nudge: tap, pull, swipe, or hold",
                         },
                         data.preserve_attr(["style", "class"]),
+                        data.show("!$_compose"),
                         data.init("app.pill.mount(el)"),
                         h.Span(
                             {"class": "orb"},
@@ -238,104 +381,16 @@ def render(
                         {"class": "glass card peek"},
                         data.show("$_peek && !$_compose"),
                         h.P(peek.text) if peek else h.P({"class": "dim"}, "Nothing new."),
-                        acts(peek, name) if peek and peek.actions else None,
+                        undo_button(peek.change_id, name)
+                        if peek and "undo" in peek.actions and peek.change_id
+                        else None,
                         h.Button(
                             {"type": "button", "class": "chip"},
-                            data.on("click", "$_peek = false; $_history = 'left'"),
+                            data.on("click", "$_peek = false; $_history = 'chat'"),
                             "History",
                         ),
                     ),
-                    h.Form(
-                        {"id": "composer", "class": "glass card"},
-                        data.show("$_compose"),
-                        data.on(
-                            "submit",
-                            at.post(SAY.href(name), include=["tab", "text", "shots"])
-                            + "; $_compose = false",
-                            prevent=True,
-                        ),
-                        data.indicator("_sending"),
-                        h.P(
-                            {"class": "hint", "role": "status"},
-                            data.show("$_hint"),
-                            data.text("$_hint"),
-                        ),
-                        h.Div(
-                            {"class": "pend"},
-                            data.show("$shots.length > 0"),
-                            *[
-                                h.Span(
-                                    {"class": "pendshot"},
-                                    data.show(f"$shots.length > {i}"),
-                                    h.Img(
-                                        {"alt": f"shot {i + 1}"},
-                                        data.attr("src", f"$shots.length > {i} && $shots[{i}]"),
-                                    ),
-                                    h.Button(
-                                        {
-                                            "type": "button",
-                                            "class": "unshot",
-                                            "aria-label": "Remove",
-                                        },
-                                        data.on(
-                                            "click",
-                                            f"$shots = $shots.filter((s, j) => j !== {i})",
-                                        ),
-                                        "×",
-                                    ),
-                                )
-                                for i in range(2)
-                            ],
-                        ),
-                        h.Div(
-                            {"class": "composerow"},
-                            h.Button(
-                                {"type": "button", "class": "round snap", "aria-label": "Snap"},
-                                data.on(
-                                    "click",
-                                    "app.snap.go(v => $shots = v, h => $_hint = h)",
-                                ),
-                                data.attr("disabled", "$_sending"),
-                                SNAP_ICON,
-                            ),
-                            h.Textarea(
-                                {
-                                    "rows": "1",
-                                    "maxlength": 2000,
-                                    "placeholder": "Say what you want…",
-                                    "aria-label": "message",
-                                },
-                                data.bind("text"),
-                                data.effect("$_compose && setTimeout(() => el.focus(), 60)"),
-                                data.on(
-                                    "keydown",
-                                    "evt.key === 'Enter' && !evt.shiftKey"
-                                    " && (evt.preventDefault(), el.form.requestSubmit())",
-                                ),
-                            ),
-                            h.Button(
-                                {"type": "submit", "class": "round send", "aria-label": "Send"},
-                                data.attr(
-                                    "disabled",
-                                    "$_sending || ($text.trim() === '' && $shots.length === 0)",
-                                ),
-                                SEND_ICON,
-                            ),
-                        ),
-                        h.Input(
-                            {"type": "file", "accept": "image/*", "hidden": True},
-                            data.init("app.snap.input(el)"),
-                            data.on(
-                                "change",
-                                "app.snap.pick(evt, v => $shots = v); $_hint = ''",
-                            ),
-                        ),
-                    ),
-                ),
-                h.Button(
-                    {"type": "button", "class": "scrim", "aria-label": "Back to the app"},
-                    data.show("$_history !== ''"),
-                    data.on("click", "$_history = ''"),
+                    composer(name, docked=True),
                 ),
             ),
             h.Div(
