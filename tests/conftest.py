@@ -8,7 +8,7 @@ import httpx
 import pytest
 from stario.testing import TestClient
 
-from app.features.signin.urls import SIGNIN, SIGNIN_GOOGLE
+from app.features.auth.urls import AUTH_CALLBACK, AUTH_GOOGLE
 from app.main import bootstrap
 
 ADAM = "adam@example.com"
@@ -34,12 +34,12 @@ def use_transport(monkeypatch, handler=None):
     monkeypatch.setattr("app.main.AsyncClient", partial(httpx.AsyncClient, transport=transport))
 
 
-async def signin(client, email=ADAM):
-    r = await client.get(SIGNIN.href(), follow_redirects=False)
+async def login(client, email=ADAM):
+    r = await client.get(AUTH_GOOGLE.href(), follow_redirects=False)
     assert r.status_code == 303
     state = parse_qs(urlparse(str(r.headers.get("location"))).query)["state"][0]
     return await client.get(
-        SIGNIN_GOOGLE.href(),
+        AUTH_CALLBACK.href(),
         params={"code": email, "state": state},
         follow_redirects=False,
     )
@@ -48,7 +48,7 @@ async def signin(client, email=ADAM):
 @contextlib.asynccontextmanager
 async def signed_in(client: TestClient):
     async with client as c:
-        await signin(c)
+        await login(c)
         yield c
 
 

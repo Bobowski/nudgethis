@@ -18,7 +18,7 @@ from functools import partial
 
 import httpx
 from stario.testing import TestClient
-from tests.conftest import ADAM, google_token, signin
+from tests.conftest import ADAM, google_token, login
 
 import app.main
 from app.main import bootstrap
@@ -92,7 +92,7 @@ async def main() -> int:
     ]
     db_path = os.environ["PROJECT_DATA_DIR"] + "/nudgethis.sqlite3"
     async with TestClient(bootstrap, request_timeout=90) as client:
-        await signin(client)
+        await login(client)
         for i, turn in enumerate(turns):
             started = time.monotonic()
             r = await client.post("/a/stario-site/say", json={"tab": "s1", **turn})

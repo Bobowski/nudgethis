@@ -25,7 +25,7 @@ The frame shows the live app. A change is a pull request on GitHub: read it ther
 
 Required, via env or `.env`. Without them nudgethis does not start:
 
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — a Google OAuth client. Its redirect URI is `<NUDGE_PUBLIC_URL>/signin/google`.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — a Google OAuth client. Its redirect URI is `<NUDGE_PUBLIC_URL>/auth/google/callback`, as in honorata.
 - `SESSION_SECRET` — 32+ random characters that sign the session cookie.
 - `NUDGE_ALLOWED_EMAILS` — a comma list of the Google accounts that may sign in.
 
