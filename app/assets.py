@@ -6,4 +6,4 @@ ASSETS = Assets(Path(__file__).resolve().parents[1] / "static", url_prefix="/sta
 STYLE_CSS = ASSETS.href("css/style.css")
 DATASTAR_JS = ASSETS.href("js/datastar.js")
 # Client behaviour lives in static/js/<name>.js — each file defines app.<name>.
-SCRIPTS = tuple(ASSETS.href(f"js/{name}.js") for name in ("snap", "ink", "frame", "pod"))
+SCRIPTS = tuple(ASSETS.href(f"js/{name}.js") for name in ("snap", "ink", "frame", "pod", "pill"))

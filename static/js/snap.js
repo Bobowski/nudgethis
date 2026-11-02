@@ -59,6 +59,11 @@ app.snap = {
           video.onloadeddata = resolve;
         });
       }
+      if (!restricted) {
+        // The crop path sees the whole tab: hide the pill for a few frames.
+        document.documentElement.classList.add("snapping");
+        await new Promise((resolve) => setTimeout(resolve, 160));
+      }
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       if (restricted) {
@@ -76,10 +81,12 @@ app.snap = {
         canvas.height = Math.max(1, Math.round(sh));
         ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
       }
+      document.documentElement.classList.remove("snapping");
       video.pause();
       video.srcObject = null;
       return canvas.toDataURL("image/png");
     } catch {
+      document.documentElement.classList.remove("snapping");
       return null;
     }
   },
