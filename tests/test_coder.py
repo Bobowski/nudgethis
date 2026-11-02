@@ -1,5 +1,4 @@
 import json
-from functools import partial
 
 import httpx
 import pytest
@@ -7,7 +6,7 @@ from stario.testing import TestClient
 
 from app.features.frame.urls import ACT, FRAME, SAY
 from app.main import bootstrap
-from tests.conftest import _env
+from tests.conftest import _env, signed_in, use_transport
 from tests.test_frame import PNG
 
 PR = "https://github.com/Bobowski/alpha/pull/7"
@@ -55,9 +54,8 @@ def cursor(tmp_path, monkeypatch):
     monkeypatch.setattr("app.coder.cursor.POLL", 0)
 
     def make(remote: Remote):
-        transport = httpx.MockTransport(remote)
-        monkeypatch.setattr("app.main.AsyncClient", partial(httpx.AsyncClient, transport=transport))
-        return TestClient(bootstrap, request_timeout=5)
+        use_transport(monkeypatch, remote)
+        return signed_in(TestClient(bootstrap, request_timeout=5))
 
     return make
 
