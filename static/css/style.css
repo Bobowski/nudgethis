@@ -300,22 +300,6 @@ input, textarea { font-size: max(16px, 1em); }
 
 /* ---------- composer ---------- */
 
-.composer .reply {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 2px 4px 10px;
-  padding: 0 2px 0 10px;
-  border-left: 3px solid var(--accent);
-  font-size: 0.92rem;
-}
-.composer .reply .md {
-  flex: 1;
-  min-width: 0;
-  max-height: 9.5em;
-  overflow-y: auto;
-}
-.composer .reply .act.undo { margin: 0; flex: none; font-size: 0.8rem; padding: 2px 12px; }
 .composer .hint { margin: 2px 6px 8px; font-size: 0.82rem; color: var(--dim); }
 
 .pend { display: flex; gap: 8px; margin: 2px 4px 10px; }

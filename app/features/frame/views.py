@@ -94,9 +94,9 @@ def message_li(m: Message, current: str) -> HtmlElement:
     )
 
 
-def composer(name: str, docked: bool, reply: Message | None = None) -> HtmlElement:
-    """The message form. Docked, it opens out of the pill with Nudge's latest
-    reply on top; in the panel, it stays open."""
+def composer(name: str, docked: bool) -> HtmlElement:
+    """The message form. Docked, it opens out of the pill; in the panel, it stays open.
+    Replies show only in the panel's chat."""
     return h.Form(
         {"id": "composer" if docked else "chatbox", "class": "sticker card composer"},
         data.show("$_compose") if docked else None,
@@ -107,15 +107,6 @@ def composer(name: str, docked: bool, reply: Message | None = None) -> HtmlEleme
             prevent=True,
         ),
         data.indicator("_sending"),
-        h.Div(
-            {"class": "reply"},
-            h.Div({"class": "md"}, *markdown.render(reply.text)),
-            undo_button(reply.change_id, name)
-            if "undo" in reply.actions and reply.change_id
-            else None,
-        )
-        if reply
-        else None,
         h.P(
             {"class": "hint", "role": "status"},
             data.show("$_hint"),
@@ -356,6 +347,8 @@ def render(
             h.Aside(
                 {"id": "history"},
                 data.class_("open", "$_history !== ''"),
+                data.init("app.swipe.mount(el)"),
+                data.on("swipe-close", "$_history = ''"),
                 h.Header(
                     {"class": "histhead"},
                     h.A({"href": HOME.href(), "class": "home"}, "‹ nudgethis"),
@@ -444,7 +437,7 @@ def render(
                     ),
                     data.effect("app.pill.save('dock', $_dock); app.pill.save('seen', $_seen)"),
                     data.on("pill-dock", "$_dock = evt.detail"),
-                    data.on("pill-pull", "$_compose = true; $_seen = +el.dataset.latest"),
+                    data.on("pill-pull", "$_compose = true"),
                     data.on(
                         "pill-swipe",
                         "evt.detail === 'left' && ($_compose = false, $_history = 'chat',"
@@ -452,7 +445,7 @@ def render(
                     ),
                     data.on(
                         "pill-tap",
-                        "$_compose = true; $_seen = +el.dataset.latest",
+                        "$_compose = true",
                     ),
                     data.on(
                         "pill-hold",
@@ -489,7 +482,7 @@ def render(
                         h.Span({"class": "label"}, label),
                         INK_LOOP if state == "busy" else None,
                     ),
-                    composer(name, docked=True, reply=latest),
+                    composer(name, docked=True),
                 ),
                 h.Button(
                     {"type": "button", "class": "scrim", "aria-label": "Back to the app"},
