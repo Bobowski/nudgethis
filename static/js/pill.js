@@ -1,8 +1,7 @@
 window.app ??= {};
-// The pill docks at the top or the bottom. A drag toward the middle moves it
-// to the other dock; a pull toward its own edge bounces and opens the composer.
-// A tap, a sideways swipe, and a long press are the other gestures. Each one
-// is a DOM event on #nudge; Datastar attributes there turn it into signals.
+// The pill is the only thing over the app. A tap opens the sheet; a long press
+// draws on the app. Each is a DOM event on #nudge; Datastar attributes there
+// turn it into signals. A finger that moves is scrolling the app, not a tap.
 app.pill = {
   load(key, fallback) {
     try {
@@ -21,26 +20,19 @@ app.pill = {
 
   mount(el) {
     const host = el.closest("#nudge");
+    const emit = (name) => host.dispatchEvent(new CustomEvent(name));
     let start = null;
     let timer = 0;
-    const emit = (name, detail) =>
-      host.dispatchEvent(new CustomEvent(name, { detail }));
-    const atBottom = () => host.classList.contains("bottom");
-    const rubber = (d, max) =>
-      Math.sign(d) * max * (1 - Math.exp(-Math.abs(d) / max));
-    const place = (x, y) => {
-      el.style.transform = x || y ? `translate(${x}px, ${y}px)` : "";
-    };
 
-    // The pill turns into the composer on the tap, so the mouse events a
-    // touch sends after it would land on the app and blur the page.
+    // The pill opens the sheet on the tap, so the mouse events a touch sends
+    // after it would land on the app and blur the page.
     el.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), {
       passive: false,
     });
 
     el.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      start = { x: e.clientX, y: e.clientY, axis: null };
+      start = { x: e.clientX, y: e.clientY };
       el.setPointerCapture(e.pointerId);
       el.classList.add("pressed");
       timer = setTimeout(() => {
@@ -51,71 +43,20 @@ app.pill = {
     });
 
     el.addEventListener("pointermove", (e) => {
-      if (!start) return;
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      if (!start.axis && Math.hypot(dx, dy) > 6) {
-        start.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) {
         clearTimeout(timer);
+        start = null;
         el.classList.remove("pressed");
-        el.classList.add("dragging");
-      }
-      if (start.axis === "x") place(rubber(dx, 90), 0);
-      if (start.axis === "y") {
-        const toEdge = atBottom() ? dy > 0 : dy < 0;
-        place(0, toEdge ? rubber(dy, 26) : dy);
       }
     });
 
-    const end = (e, cancelled) => {
+    const end = (cancelled) => {
       clearTimeout(timer);
-      el.classList.remove("pressed", "dragging");
-      if (!start) return;
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      const axis = start.axis;
+      el.classList.remove("pressed");
+      if (start && !cancelled) emit("pill-tap");
       start = null;
-      if (cancelled) return place(0, 0);
-      if (!axis) return emit("pill-tap");
-      if (axis === "x") {
-        place(0, 0);
-        if (Math.abs(dx) > 56) emit("pill-swipe", dx < 0 ? "left" : "right");
-        return;
-      }
-      const toEdge = atBottom() ? dy > 0 : dy < 0;
-      if (toEdge) {
-        place(0, 0);
-        if (Math.abs(dy) > 14) {
-          this.bounce(el);
-          emit("pill-pull");
-        }
-        return;
-      }
-      if (Math.abs(dy) < innerHeight * 0.18) return place(0, 0);
-      this.dock(el, host, atBottom() ? "top" : "bottom", emit);
     };
-    el.addEventListener("pointerup", (e) => end(e, false));
-    el.addEventListener("pointercancel", (e) => end(e, true));
-  },
-
-  // FLIP: keep the pill where the finger left it, switch the dock, then let
-  // the transition carry it home.
-  dock(el, host, side, emit) {
-    const before = el.getBoundingClientRect().top;
-    el.style.transition = "none";
-    el.style.transform = "";
-    host.classList.toggle("bottom", side === "bottom");
-    emit("pill-dock", side);
-    const after = el.getBoundingClientRect().top;
-    el.style.transform = `translateY(${before - after}px)`;
-    void el.offsetWidth;
-    el.style.transition = "";
-    el.style.transform = "";
-  },
-
-  bounce(el) {
-    el.classList.remove("bounce");
-    void el.offsetWidth;
-    el.classList.add("bounce");
+    el.addEventListener("pointerup", () => end(false));
+    el.addEventListener("pointercancel", () => end(true));
   },
 };

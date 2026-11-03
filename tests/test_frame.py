@@ -164,8 +164,8 @@ async def test_a_live_change_leaves_the_pill_idle(client):
 async def test_the_panel_has_a_chat_composer_and_a_timeline(client):
     await live_change_id(client)
     page = (await client.get(FRAME.href("alpha"))).text
-    assert 'id="chatbox"' in page
-    assert 'id="composer"' in page
+    assert page.count('id="composer"') == 1  # one input, in the sheet
+    assert 'id="sheet"' in page
     assert re.search(r'id="step-1".*?Done', page)
     assert 'class="doing"' not in page  # nothing is working now
 

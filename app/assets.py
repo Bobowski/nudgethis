@@ -7,5 +7,6 @@ STYLE_CSS = ASSETS.href("css/style.css")
 DATASTAR_JS = ASSETS.href("js/datastar.js")
 # Client behaviour lives in static/js/<name>.js — each file defines app.<name>.
 SCRIPTS = tuple(
-    ASSETS.href(f"js/{name}.js") for name in ("snap", "ink", "frame", "pod", "pill", "swipe")
+    ASSETS.href(f"js/{name}.js")
+    for name in ("snap", "ink", "frame", "pod", "pill", "swipe", "dictate")
 )
