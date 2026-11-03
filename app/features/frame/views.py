@@ -143,7 +143,7 @@ def message_li(m: Message, current: str) -> HtmlElement | None:
         h.Div({"class": "md"}, *markdown.render(m.text)),
         h.Button(
             {"type": "button", "class": "details"},
-            data.on("click", f"$_history = 'timeline'; app.frame.show('step-{m.change_id}')"),
+            data.on("click", f"$_view = 'changes'; app.frame.show('step-{m.change_id}')"),
             "Details",
         )
         # A change's outcome (live, or it did not work), not Nudge's "On it."
@@ -175,16 +175,13 @@ def app_li(name: str, here: bool, color: str, phase: str, latest: int) -> HtmlEl
     )
 
 
-def composer(name: str, docked: bool) -> HtmlElement:
-    """The message form. Docked, it opens out of the pill; in the panel, it stays open.
-    Replies show only in the panel's chat."""
+def composer(name: str) -> HtmlElement:
+    """The one message form, at the foot of the sheet. The pencil draws on the app."""
     return h.Form(
-        {"id": "composer" if docked else "chatbox", "class": "sticker card composer"},
-        data.show("$_compose") if docked else None,
+        {"id": "composer", "class": "composer"},
         data.on(
             "submit",
-            at.post(SAY.href(name), include=["tab", "text", "shots"])
-            + ("; $_compose = false" if docked else ""),
+            "app.dictate.stop(); " + at.post(SAY.href(name), include=["tab", "text", "shots"]),
             prevent=True,
         ),
         data.indicator("_sending"),
@@ -205,15 +202,8 @@ def composer(name: str, docked: bool) -> HtmlElement:
                         data.attr("src", f"$shots.length > {i} && $shots[{i}]"),
                     ),
                     h.Button(
-                        {
-                            "type": "button",
-                            "class": "unshot",
-                            "aria-label": "Remove",
-                        },
-                        data.on(
-                            "click",
-                            f"$shots = $shots.filter((s, j) => j !== {i})",
-                        ),
+                        {"type": "button", "class": "unshot", "aria-label": "Remove"},
+                        data.on("click", f"$shots = $shots.filter((s, j) => j !== {i})"),
                         "×",
                     ),
                 )
@@ -223,18 +213,8 @@ def composer(name: str, docked: bool) -> HtmlElement:
         h.Div(
             {"class": "composerow"},
             h.Button(
-                {"type": "button", "class": "round close", "aria-label": "Close"},
-                data.on("click", "$_compose = false"),
-                CLOSE_ICON,
-            )
-            if docked
-            else None,
-            h.Button(
                 {"type": "button", "class": "round snap", "aria-label": "Draw on the app"},
-                data.on(
-                    "click",
-                    "app.snap.go(h => $_hint = h)",
-                ),
+                data.on("click", "app.snap.go(h => $_hint = h)"),
                 data.attr("disabled", "$_sending"),
                 DRAW_ICON,
             ),
@@ -242,13 +222,15 @@ def composer(name: str, docked: bool) -> HtmlElement:
                 {
                     "rows": "1",
                     "maxlength": 2000,
-                    "placeholder": "Say what you want…",
+                    "placeholder": "Say what to change…",
                     "aria-label": "message",
                 },
                 data.bind("text"),
-                data.effect("$_compose && setTimeout(() => el.focus({preventScroll: true}), 60)")
-                if docked
-                else None,
+                data.ref("_box"),
+                data.effect(
+                    "$_sheet && $_view === 'chat'"
+                    " && setTimeout(() => el.focus({preventScroll: true}), 80)"
+                ),
                 data.on(
                     "keydown",
                     "evt.key === 'Enter' && !evt.shiftKey"
@@ -256,25 +238,42 @@ def composer(name: str, docked: bool) -> HtmlElement:
                 ),
             ),
             h.Button(
+                {"type": "button", "class": "round mic", "aria-label": "Dictate"},
+                data.show("app.dictate.can()"),
+                data.class_("on", "$_listening"),
+                data.attr("aria-pressed", "$_listening"),
+                data.on("click", "app.dictate.toggle($_box, v => $_listening = v)"),
+                MIC_ICON,
+            ),
+            h.Button(
                 {"type": "submit", "class": "round send", "aria-label": "Send"},
-                data.attr(
-                    "disabled",
-                    "$_sending || ($text.trim() === '' && $shots.length === 0)",
-                ),
+                data.attr("disabled", "$_sending || ($text.trim() === '' && $shots.length === 0)"),
                 SEND_ICON,
             ),
         ),
         h.Input(
             {"type": "file", "accept": "image/*", "hidden": True},
             data.init("app.snap.input(el)"),
-            data.on(
-                "change",
-                "app.snap.pick(evt); $_hint = ''",
-            ),
-        )
-        if docked
-        else None,
+            data.on("change", "app.snap.pick(evt); $_hint = ''"),
+        ),
     )
+
+
+MIC_ICON = svg.Svg(
+    {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
+    svg.Rect({"x": "9", "y": "3", "width": "6", "height": "11", "rx": "3"}),
+    svg.Path({"d": "M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"}),
+)
+MORE_ICON = svg.Svg(
+    {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
+    svg.Circle({"cx": "5", "cy": "12", "r": "1.4"}),
+    svg.Circle({"cx": "12", "cy": "12", "r": "1.4"}),
+    svg.Circle({"cx": "19", "cy": "12", "r": "1.4"}),
+)
+CHEVRON = svg.Svg(
+    {"viewBox": "0 0 24 24", "class": "icon chev", "aria-hidden": "true"},
+    svg.Path({"d": "M7 10l5 5 5-5"}),
+)
 
 
 VENDORS = (
@@ -289,7 +288,7 @@ VENDORS = (
 def coder_panel(
     name: str, models: tuple[Model, ...], model_id: str, params: dict[str, str], live: bool
 ) -> HtmlElement:
-    """The Coder tab: where each change runs, on which model, with which params."""
+    """The coder's settings, in the sheet's menu: which model, with which params."""
     model = next((m for m in models if m.id == model_id), None)
     post = at.post(CODER.href(name), include=["tab", "coder_set"])
 
@@ -303,7 +302,6 @@ def coder_panel(
 
     return h.Div(
         {"id": "coder", "class": "coder"},
-        data.show("$_history === 'coder'"),
         data.init(at.get(CODER_LIVE.href(name), retry="always")),
         h.P(
             {"class": "lead"},
@@ -399,6 +397,7 @@ def render(
     latest_id = pulse.latest.get(name, 0)
     unread = f"$_seen < {latest_id}"
     seen_key = string_literal(f"seen.{name}")
+    in_flight = [row for row in reversed(timeline) if row[2] in ("working", "deploying")]
     return page(
         f"nudgethis · {name}",
         h.Div(
@@ -410,118 +409,179 @@ def render(
                     "shots": [],
                     "change_id": 0,
                     "coder_set": "",
+                    "color": color,
                     "_rev": rev,
-                    "_dock": "top",
                     "_seen": 0,
-                    "_compose": False,
-                    "_history": "",
+                    "_sheet": False,
+                    "_view": "chat",
+                    "_apps": False,
+                    "_menu": False,
                     "_hint": "",
                     "_inkwait": False,
-                    "_apps": False,
-                    "color": color,
+                    "_listening": False,
                 },
                 if_missing=True,
             ),
             data.init(at.get(FRAME_LIVE.href(name), retry="always")),
             data.effect("app.frame.rev($_rev)"),
             data.on("pagehide", "app.snap.stop()", target="window"),
+            # Esc closes a dropdown, then the sheet; / opens the sheet.
             data.on(
                 "keydown",
-                "evt.key === 'Escape' && ($_compose = false, $_history = '', $_apps = false)",
+                "evt.key === 'Escape' && ($_apps || $_menu"
+                " ? ($_apps = false, $_menu = false) : ($_sheet = false));"
+                " evt.key === '/' && !$_sheet && !evt.target.closest('input, textarea, select')"
+                " && (evt.preventDefault(), $_sheet = true, $_view = 'chat')",
                 target="window",
             ),
             # The app's colour: every accent on the page follows it.
             h.Style(f"#frame {{ --accent: {accent(color)}; }}"),
-            h.Aside(
-                {"id": "apps"},
-                data.class_("open", "$_apps"),
-                data.init("app.swipe.mount(el)"),
-                data.on("swipe-close", "$_apps = false"),
-                h.Header(
-                    {"class": "histhead"},
-                    h.A({"href": HOME.href(), "class": "home"}, "‹ nudgethis"),
-                    h.Span({"class": "appname"}, "Apps"),
-                    h.Button(
-                        {"type": "button", "class": "round close", "aria-label": "Back to the app"},
-                        data.on("click", "$_apps = false"),
-                        CLOSE_ICON,
-                    ),
+            h.Div(
+                {"class": "stage"},
+                data.class_("away", "$_sheet"),
+                h.Iframe(
+                    {"id": "app-frame", "src": url, "title": name},
+                    data.ignore_morph(),
+                    data.init("app.frame.bind(el); app.snap.bind(el)"),
                 ),
-                h.Ul(
-                    {"class": "applist"},
-                    *[
-                        app_li(
-                            other,
-                            other == name,
-                            pulse.colors.get(other, DEFAULT),
-                            pulse.phases.get(other, ""),
-                            pulse.latest.get(other, 0),
-                        )
-                        for other in names
-                    ],
-                ),
+                # The only thing over the app: tap to talk, hold to draw.
                 h.Div(
-                    {"class": "swatches", "role": "group", "aria-label": f"colour of {name}"},
-                    h.Span({"class": "name"}, "Colour"),
-                    h.Div(
-                        {"class": "row"},
-                        *[
-                            h.Button(
-                                {
-                                    "type": "button",
-                                    "class": "swatch",
-                                    "style": f"--sw: {value}",
-                                    "aria-label": key,
-                                    "title": key,
-                                },
-                                data.class_("on", f"$color === '{key}'"),
-                                data.on(
-                                    "click",
-                                    f"$color = '{key}'; "
-                                    + at.post(COLOR.href(name), include=["color"]),
-                                ),
-                            )
-                            for key, value in COLORS.items()
-                        ],
+                    {"id": "nudge", "data-latest": latest_id},
+                    data.init(f"$_seen = app.pill.load({seen_key}, 0)"),
+                    data.effect(f"app.pill.save({seen_key}, $_seen)"),
+                    data.on(
+                        "pill-tap",
+                        "$_sheet = true; $_view = 'chat'; $_apps = false; $_menu = false",
+                    ),
+                    data.on("pill-hold", "app.snap.go(h => ($_hint = h, $_sheet = true))"),
+                    h.Button(
+                        {
+                            "type": "button",
+                            "class": "sticker pill",
+                            "data-state": state,
+                            "aria-label": "Nudge: tap to talk, hold to draw on the app",
+                        },
+                        data.preserve_attr(["style", "class"]),
+                        data.show("!$_sheet"),
+                        data.init("app.pill.mount(el)"),
+                        h.Span({"class": "orb"}, data.class_("unread", unread)),
+                        h.Span(
+                            {"id": "shipmark", "class": "shipmark", "aria-hidden": "true"},
+                            data.preserve_attr("class"),
+                            data.init("app.frame.mark(el)"),
+                            svg.Svg(
+                                {"viewBox": "0 0 24 24"},
+                                svg.Path({"d": "M4 12.5 10 18 20 6"}),
+                            ),
+                        ),
+                        h.Span({"class": "label"}, label),
+                        INK_LOOP if state == "busy" else None,
                     ),
                 ),
             ),
+            h.Button(
+                {"type": "button", "class": "scrim", "aria-label": "Back to the app"},
+                data.show("$_sheet"),
+                data.on("click", "$_sheet = false"),
+            ),
+            # The sheet: everything about the app, in one place.
             h.Aside(
-                {"id": "history"},
-                data.class_("open", "$_history !== ''"),
+                {"id": "sheet", "aria-label": "Nudge"},
+                data.class_("open", "$_sheet"),
                 data.init("app.swipe.mount(el); app.frame.times(el)"),
-                data.on("swipe-close", "$_history = ''"),
+                data.on("swipe-close", "$_sheet = false"),
+                # Reading the chat reads its replies: the orb goes grey.
+                data.effect(
+                    f"$_sheet && $_view === 'chat' && ($_seen = Math.max($_seen, {latest_id}))"
+                ),
                 h.Header(
-                    {"class": "histhead"},
-                    h.A({"href": HOME.href(), "class": "home"}, "‹ nudgethis"),
-                    h.Span({"class": "appname"}, name),
+                    {"class": "sheethead", "data-grab": True},
+                    h.Span({"class": "grab", "aria-hidden": "true"}),
+                    h.Button(
+                        {"type": "button", "class": "appswitch", "aria-label": "Switch app"},
+                        data.on("click", "$_apps = !$_apps; $_menu = false"),
+                        data.attr("aria-expanded", "$_apps"),
+                        h.Span({"class": "dot", "aria-hidden": "true"}),
+                        h.Span({"class": "appname"}, name.removeprefix("nudge-")),
+                        CHEVRON,
+                    ),
+                    h.Button(
+                        {"type": "button", "class": "round", "aria-label": "Settings"},
+                        data.on("click", "$_menu = !$_menu; $_apps = false"),
+                        data.attr("aria-expanded", "$_menu"),
+                        MORE_ICON,
+                    ),
                     h.Button(
                         {"type": "button", "class": "round close", "aria-label": "Back to the app"},
-                        data.on("click", "$_history = ''"),
+                        data.on("click", "$_sheet = false"),
                         CLOSE_ICON,
                     ),
+                ),
+                h.Div(
+                    {"id": "apps", "class": "drop"},
+                    data.show("$_apps"),
+                    h.Ul(
+                        {"class": "applist"},
+                        *[
+                            app_li(
+                                other,
+                                other == name,
+                                pulse.colors.get(other, DEFAULT),
+                                pulse.phases.get(other, ""),
+                                pulse.latest.get(other, 0),
+                            )
+                            for other in names
+                        ],
+                    ),
+                    h.A({"href": HOME.href(), "class": "newlink"}, "+ New app"),
+                ),
+                h.Div(
+                    {"id": "menu", "class": "drop"},
+                    data.show("$_menu"),
+                    h.Div(
+                        {"class": "swatches", "role": "group", "aria-label": f"colour of {name}"},
+                        h.Span({"class": "name"}, "Colour"),
+                        h.Div(
+                            {"class": "row"},
+                            *[
+                                h.Button(
+                                    {
+                                        "type": "button",
+                                        "class": "swatch",
+                                        "style": f"--sw: {value}",
+                                        "aria-label": key,
+                                        "title": key,
+                                    },
+                                    data.class_("on", f"$color === '{key}'"),
+                                    data.on(
+                                        "click",
+                                        f"$color = '{key}'; "
+                                        + at.post(COLOR.href(name), include=["color"]),
+                                    ),
+                                )
+                                for key, value in COLORS.items()
+                            ],
+                        ),
+                    ),
+                    coder,
                 ),
                 h.Div(
                     {"class": "tabs", "role": "tablist"},
                     *[
                         h.Button(
                             {"type": "button", "role": "tab"},
-                            data.class_("on", f"$_history === '{key}'"),
-                            data.attr("aria-selected", f"$_history === '{key}'"),
-                            data.on("click", f"$_history = '{key}'"),
+                            data.class_("on", f"$_view === '{key}'"),
+                            data.attr("aria-selected", f"$_view === '{key}'"),
+                            data.on("click", f"$_view = '{key}'"),
                             label,
                         )
-                        for key, label in (
-                            ("chat", "Chat"),
-                            ("timeline", "Timeline"),
-                            ("coder", "Coder"),
-                        )
+                        for key, label in (("chat", "Chat"), ("changes", "Changes"))
                     ],
                 ),
                 # What is being worked on now, one plain line each.
                 h.Ul(
                     {"class": "inflight", "aria-label": "in progress"},
-                    data.show("$_history === 'chat'"),
+                    data.show("$_view === 'chat'"),
                     *[
                         h.Li(
                             h.Span({"class": "what"}, clip(row[11] or row[9] or row[1], 70)),
@@ -530,22 +590,21 @@ def render(
                                 "going live" if row[2] == "deploying" else "in progress",
                             ),
                         )
-                        for row in reversed(timeline)
-                        if row[2] in ("working", "deploying")
+                        for row in in_flight
                     ],
                 )
-                if active
+                if in_flight
                 else None,
                 h.Ol(
                     {"id": "msgs"},
-                    data.show("$_history === 'chat'"),
+                    data.show("$_view === 'chat'"),
                     data.init("el.pod ??= app.pod(el)"),
                     *(
                         [message_li(m, name) for m in here]
                         or [
                             h.Li(
                                 {"class": "empty"},
-                                "Tap the pill to say what you want. Hold it to draw on the app.",
+                                "Tell me what to change in the app. Hold the pill to draw on it.",
                             )
                         ]
                     ),
@@ -561,7 +620,7 @@ def render(
                 ),
                 h.Ol(
                     {"class": "timeline"},
-                    data.show("$_history === 'timeline'"),
+                    data.show("$_view === 'changes'"),
                     *(
                         [
                             h.Li(
@@ -600,89 +659,7 @@ def render(
                         or [h.Li({"class": "empty"}, "No changes yet.")]
                     ),
                 ),
-                coder,
-                h.Div(
-                    {"class": "chatfoot"},
-                    data.show("$_history === 'chat'"),
-                    composer(name, docked=False),
-                ),
-            ),
-            h.Div(
-                {"class": "stage"},
-                data.class_("away", "$_history !== ''"),
-                data.class_("awayleft", "$_apps"),
-                h.Iframe(
-                    {"id": "app-frame", "src": url, "title": name},
-                    data.ignore_morph(),
-                    data.init("app.frame.bind(el); app.snap.bind(el)"),
-                ),
-                h.Div(
-                    {
-                        "id": "nudge",
-                        "data-latest": latest_id,
-                    },
-                    data.class_("bottom", "$_dock === 'bottom'"),
-                    data.init(
-                        "$_dock = app.pill.load('dock', 'top');"
-                        f" $_seen = app.pill.load({seen_key}, 0)"
-                    ),
-                    data.effect(
-                        f"app.pill.save('dock', $_dock); app.pill.save({seen_key}, $_seen)"
-                    ),
-                    data.on("pill-dock", "$_dock = evt.detail"),
-                    data.on("pill-pull", "$_compose = true"),
-                    data.on(
-                        "pill-swipe",
-                        "evt.detail === 'left' ? ($_compose = false, $_apps = false,"
-                        " $_history = 'chat', $_seen = +el.dataset.latest)"
-                        " : ($_compose = false, $_history = '', $_apps = true)",
-                    ),
-                    data.on(
-                        "pill-tap",
-                        "$_compose = true",
-                    ),
-                    data.on(
-                        "pill-hold",
-                        "app.snap.go(h => ($_hint = h, $_compose = true))",
-                    ),
-                    data.on(
-                        "blur",
-                        "!$text.trim() && !$shots.length && ($_compose = false)",
-                        target="window",
-                    ),
-                    h.Button(
-                        {
-                            "type": "button",
-                            "class": "sticker pill",
-                            "data-state": state,
-                            "aria-label": "Nudge: tap, pull, swipe, or hold",
-                        },
-                        data.preserve_attr(["style", "class"]),
-                        data.show("!$_compose && $_history === '' && !$_apps"),
-                        data.init("app.pill.mount(el)"),
-                        h.Span(
-                            {"class": "orb"},
-                            data.class_("unread", unread),
-                        ),
-                        h.Span(
-                            {"id": "shipmark", "class": "shipmark", "aria-hidden": "true"},
-                            data.preserve_attr("class"),
-                            data.init("app.frame.mark(el)"),
-                            svg.Svg(
-                                {"viewBox": "0 0 24 24"},
-                                svg.Path({"d": "M4 12.5 10 18 20 6"}),
-                            ),
-                        ),
-                        h.Span({"class": "label"}, label),
-                        INK_LOOP if state == "busy" else None,
-                    ),
-                    composer(name, docked=True),
-                ),
-                h.Button(
-                    {"type": "button", "class": "scrim", "aria-label": "Back to the app"},
-                    data.show("$_history !== '' || $_apps"),
-                    data.on("click", "$_history = ''; $_apps = false"),
-                ),
+                composer(name),
             ),
             h.Div(
                 {"id": "ink", "class": "ink"},
@@ -706,7 +683,7 @@ def render(
                     {"class": "sticker inkbar"},
                     data.on(
                         "submit",
-                        "!$_inkwait && ($shots = app.ink.take(), $_compose = false, "
+                        "!$_inkwait && ($shots = app.ink.take(), $_sheet = true, $_view = 'chat', "
                         + at.post(SAY.href(name), include=["tab", "text", "shots"])
                         + ")",
                         prevent=True,

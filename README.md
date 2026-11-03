@@ -16,7 +16,7 @@ Then open http://127.0.0.1:8000 and pick an app.
 
 ## The Coder tab
 
-Swipe the pill left and open Coder. It picks the Cursor model for this app and each of its params (effort, fast, context, and so on), from Cursor's own list of models. A choice that is Max Mode says so. The next change uses it; a change that already runs keeps its model.
+Tap the pill, open the menu (⋯) in the sheet, and pick the coder. It picks the Cursor model for this app and each of its params (effort, fast, context, and so on), from Cursor's own list of models. A choice that is Max Mode says so. The next change uses it; a change that already runs keeps its model.
 
 ## New apps
 
