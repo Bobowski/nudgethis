@@ -104,23 +104,27 @@ def render(
                 ),
                 h.Div(
                     {"class": "newfoot"},
+                    # The app's own name, which is its address. Type one, or keep the
+                    # one suggested from the prompt (shown greyed out).
                     h.Label(
                         {"class": "where"},
-                        h.Input(
-                            {
-                                "class": "label",
-                                "maxlength": 30,
-                                "autocomplete": "off",
-                                "spellcheck": "false",
-                                "aria-label": "the app's name, in its address",
-                            },
-                            data.bind("new_name"),
-                            data.attr("placeholder", "$_hint || 'name'"),
-                            data.attr(
-                                "size", "Math.max(4, ($new_name || $_hint || 'name').length)"
+                        h.Span({"class": "what"}, "Address"),
+                        h.Span(
+                            {"class": "addr"},
+                            h.Input(
+                                {
+                                    "class": "label",
+                                    "maxlength": 30,
+                                    "autocomplete": "off",
+                                    "autocapitalize": "off",
+                                    "spellcheck": "false",
+                                    "aria-label": "the app's name, in its address",
+                                },
+                                data.bind("new_name"),
+                                data.attr("placeholder", "$_hint || 'your-app'"),
                             ),
+                            h.Span({"class": "dim"}, f".{domain}"),
                         ),
-                        h.Span({"class": "dim"}, f".{domain}"),
                     ),
                     h.Span(
                         {"class": "from dim"},

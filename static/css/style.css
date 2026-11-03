@@ -155,22 +155,27 @@ input, textarea { font-size: max(16px, 1em); }
   border-top: 1px solid var(--hairline);
   font-size: 0.88rem;
 }
-.newfoot .where { display: inline-flex; align-items: baseline; min-width: 0; }
-.newfoot .where input {
-  min-width: 4ch;
-  max-width: 16ch;
+.newfoot .where { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+.newfoot .what { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.newfoot .addr { display: inline-flex; align-items: baseline; min-width: 0; padding: 3px 8px; border-radius: 8px; background: var(--field); }
+/* The name fits its text: no gap before it, and it grows as it is typed. */
+.newfoot .addr input {
+  field-sizing: content;
+  min-width: 3ch;
+  max-width: 18ch;
   font-family: inherit;
+  font-size: inherit;
   font-weight: 700;
   color: inherit;
   background: transparent;
   border: 0;
-  border-bottom: 1.5px dashed var(--hairline);
   outline: none;
-  padding: 2px 0;
-  text-align: right;
+  padding: 0;
+  text-align: left;
 }
-.newfoot .where input:focus { border-bottom-color: var(--accent); }
-.newfoot .from { flex: 1; min-width: 8rem; font-size: 0.8rem; }
+.newfoot .addr:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.newfoot .addr input::placeholder { color: var(--dim); font-weight: 600; }
+.newfoot .from { flex: 1 1 100%; order: 3; font-size: 0.78rem; }
 .newfoot .make { margin-left: auto; padding: 8px 18px; background: var(--accent); color: var(--on-accent); border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
 .newfoot .make:disabled { opacity: 1; background: var(--field); color: var(--dim); border-color: var(--hairline); box-shadow: none; }
 
@@ -252,7 +257,8 @@ input, textarea { font-size: max(16px, 1em); }
 .confirm .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .chip.danger { background: var(--accent); color: var(--on-accent); }
 
-.homehead nav { display: flex; gap: 6px; }
+.homehead nav { display: flex; align-items: center; gap: 6px; }
+.homehead a.chip { border: var(--line) solid var(--hairline); border-radius: 999px; }
 
 /* ---------- settings: what the builder runs on ---------- */
 
@@ -529,6 +535,8 @@ input, textarea { font-size: max(16px, 1em); }
   padding: 18px 10px 8px 14px;
   touch-action: none;
 }
+.sheethead .home { color: var(--dim); }
+.sheethead .home:hover { color: var(--ink); }
 .sheethead .grab {
   position: absolute;
   top: 7px;

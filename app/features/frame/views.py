@@ -265,6 +265,10 @@ MIC_ICON = svg.Svg(
     svg.Rect({"x": "9", "y": "3", "width": "6", "height": "11", "rx": "3"}),
     svg.Path({"d": "M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"}),
 )
+HOME_ICON = svg.Svg(
+    {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
+    svg.Path({"d": "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"}),
+)
 MORE_ICON = svg.Svg(
     {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
     svg.Circle({"cx": "5", "cy": "12", "r": "1.4"}),
@@ -499,6 +503,11 @@ def render(
                 h.Header(
                     {"class": "sheethead", "data-grab": True},
                     h.Span({"class": "grab", "aria-hidden": "true"}),
+                    # Back to every app, and to making a new one: always one tap away.
+                    h.A(
+                        {"href": HOME.href(), "class": "round home", "aria-label": "All apps"},
+                        HOME_ICON,
+                    ),
                     h.Button(
                         {"type": "button", "class": "appswitch", "aria-label": "Switch app"},
                         data.on("click", "$_apps = !$_apps; $_menu = false"),
@@ -535,7 +544,7 @@ def render(
                             for other in names
                         ],
                     ),
-                    h.A({"href": HOME.href(), "class": "newlink"}, "+ New app"),
+                    h.A({"href": HOME.href(), "class": "newlink"}, "All apps · New app"),
                 ),
                 h.Div(
                     {"id": "menu", "class": "drop"},
