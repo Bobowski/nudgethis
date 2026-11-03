@@ -48,7 +48,21 @@ CODER_RULES = (
     " Do not use computer use, the desktop, a browser, or screenshots:"
     " no computerUse tool or subagent, and no recording."
     " Read the code and run `just check`; that is enough proof."
+    " Your last message is shown as it is to the person who asked, who may not"
+    " be technical. Make it only one to three short sentences in plain words"
+    " about what they will see change in the app. No code, file names,"
+    " commands, markdown, or technical terms."
 )
+
+# What the person sees when a change fails. The cause goes to the span.
+FAILED_START = "I couldn't start on that. Please try again in a moment."
+NO_FUNDS = (
+    "I couldn't start on that: the coding service has run out of credit."
+    " Top it up in Cursor's billing settings, then ask again."
+)
+NOT_DONE = "I couldn't make that change this time. Try saying it another way."
+NOT_LIVE = "I made the change, but the app didn't update with it. Please try again in a moment."
+TOO_SLOW = "That took too long, so I stopped waiting. Please try again in a moment."
 
 
 def brief_of(report: str, limit: int = 2400) -> str:
@@ -375,7 +389,10 @@ class FramePage:
             after = str((await self.yard.last_deploy(name)).get("started", "")) if self.yard else ""
             agent_id, run_id = await start()
         except CoderError as exc:
-            await self.db.write(store.fail_change, change_id, name, f"I could not start: {exc}")
+            broke = "usage_limit" in str(exc) or "balance" in str(exc)
+            await self.db.write(
+                store.fail_change, change_id, name, NO_FUNDS if broke else FAILED_START
+            )
             span.fail(str(exc))
             return
         await self.db.write(store.set_run, change_id, agent_id, run_id, after)
@@ -396,8 +413,8 @@ class FramePage:
             run = await self.cursor.wait(agent_id, run_id)
             span.attrs({"cursor.status": run.status})
             if run.status != "FINISHED":
-                why = run.result[:300] or run.status.lower()
-                await self.db.write(store.fail_change, change_id, name, f"No change: {why}")
+                span.attrs({"cursor.result": run.result[:300]})
+                await self.db.write(store.fail_change, change_id, name, NOT_DONE)
                 return
             text = brief_of(run.result) or "Done."
             if self.yard is not None:
@@ -406,13 +423,13 @@ class FramePage:
                     deploy = await self.yard.next_deploy(name, after)
                 span.attrs({"yard.status": deploy.get("status", "")})
                 if deploy.get("status") != "ok":
-                    why = deploy.get("error") or deploy.get("status")
-                    text = f"Pushed, but the deploy did not go live: {why}"
-                    await self.db.write(store.fail_change, change_id, name, text)
+                    span.attrs({"yard.error": str(deploy.get("error") or "")})
+                    await self.db.write(store.fail_change, change_id, name, NOT_LIVE)
                     return
         except (CoderError, TimeoutError) as exc:
             why = str(exc) or "the deploy took too long"
-            await self.db.write(store.fail_change, change_id, name, f"The change failed: {why}")
+            text = TOO_SLOW if isinstance(exc, TimeoutError) else FAILED_START
+            await self.db.write(store.fail_change, change_id, name, text)
             span.fail(why)
             return
         await self.db.write(store.go_live, change_id, name, text)
