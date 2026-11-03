@@ -33,6 +33,11 @@ from app.nudge import data as nudge_data
 from app.nudge.agent import TurnDeps
 
 MAX_SHOT = 4 * 1024 * 1024
+# The coder's last words in every run: the user waits on the frame while it works.
+QUICK = (
+    " Work fast. Test only what the change touches. Run `just check` once,"
+    " with no browser and no screenshots, then push to main."
+)
 DEPLOY_TIMEOUT = 600
 MAGIC = {
     "png": (b"\x89PNG\r\n\x1a\n", "png"),
@@ -328,7 +333,8 @@ class FramePage:
                     if images
                     else ""
                 )
-                + " Keep the change small, run `just check`, and push to main."
+                + " Keep the change small."
+                + QUICK
             )
             cursor, repo = self.cursor, f"{self.config.repo_base}/{name}"
             model, params = self.coder_of(name)
@@ -416,10 +422,7 @@ class FramePage:
             if cursor is None or not agent_id:
                 await self.fake(undo_id, name, "Undone. (fake)")
                 return
-            text = (
-                "Revert the change you pushed to main in your last run, run `just check`,"
-                " and push the revert to main."
-            )
+            text = "Revert the change you pushed to main in your last run." + QUICK
             await self.launch(undo_id, name, span, lambda: cursor.follow_up(agent_id, text))
 
     async def undo_command(self, c: Context, w: Writer) -> None:
