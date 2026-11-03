@@ -1,5 +1,6 @@
 from stario import h
 from stario.datastar import at, data
+from stario.datastar.format import string_literal
 from stario.markup import HtmlElement
 
 from app.common.palette import accent
@@ -7,6 +8,40 @@ from app.common.shell import INK_LOOP, page
 from app.features.auth.urls import LOGOUT
 from app.features.frame.urls import FRAME
 from app.features.home.urls import HOME_LIVE, NEW_APP
+
+# A few things people build, to start from when the page is blank.
+IDEAS = (
+    (
+        "Meal planner",
+        "meals",
+        "A weekly meal planner: pick a dinner for each day, and get one shopping list.",
+    ),
+    (
+        "Habit tracker",
+        "habits",
+        "A habit tracker: a few daily habits I tick off, with a streak for each.",
+    ),
+    (
+        "Shopping list",
+        "shopping",
+        "A shared shopping list my family can add to, and tick off in the shop.",
+    ),
+    (
+        "Chore chart",
+        "chores",
+        "A chore chart for the family: who does what this week, ticked off when it is done.",
+    ),
+    (
+        "Booking page",
+        "booking",
+        "A booking page for my small studio: people pick a free slot and leave their name.",
+    ),
+    (
+        "Recipe box",
+        "recipes",
+        "A recipe box: save recipes with their ingredients and steps, and search them.",
+    ),
+)
 
 
 def render(
@@ -20,17 +55,46 @@ def render(
         "nudgethis",
         h.Main(
             {"id": "home"},
-            data.signals({"new_name": "", "new_from": ""}, if_missing=True),
+            data.signals({"new_name": "", "new_from": "", "new_about": ""}, if_missing=True),
             data.init(at.get(HOME_LIVE.href(), retry="always")),
             h.H1("nudge", h.Span({"class": "this"}, "this")),
             h.Form(
                 {"class": "sticker newapp"},
                 data.on(
                     "submit",
-                    at.post(NEW_APP.href(), include=["new_name", "new_from"]),
+                    at.post(NEW_APP.href(), include=["new_name", "new_from", "new_about"]),
                     prevent=True,
                 ),
                 data.indicator("_making"),
+                h.Textarea(
+                    {
+                        "class": "newabout",
+                        "rows": "2",
+                        "maxlength": 2000,
+                        "placeholder": "Describe your app: what should it do, and for whom?",
+                        "aria-label": "what the new app should do",
+                    },
+                    data.bind("new_about"),
+                )
+                if can_make
+                else None,
+                h.Div(
+                    {"class": "ideas", "role": "group", "aria-label": "ideas"},
+                    *[
+                        h.Button(
+                            {"type": "button", "class": "chip"},
+                            data.on(
+                                "click",
+                                f"$new_about = {string_literal(about)};"
+                                f" $new_name = $new_name || {string_literal(slug)}",
+                            ),
+                            label,
+                        )
+                        for label, slug, about in IDEAS
+                    ],
+                )
+                if can_make
+                else None,
                 h.Label(
                     {"class": "newname"},
                     h.Span({"class": "dim"}, "https://"),

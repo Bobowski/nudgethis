@@ -53,7 +53,7 @@ async def bootstrap(app: App, span: Span):
             span.attrs({"cursor.models_error": str(exc)})
         yard = Yard(http, config.yard_url, config.yard_token) if config.yard_token else None
         frame = FramePage(db, config, agent, model_name, instructions, cursor, yard, models)
-        HomePage(db, config, http, yard, signed_in).register(app)
+        HomePage(db, config, http, yard, signed_in, frame.first_request).register(app)
         google = Google(http, config.google_client_id, config.google_client_secret)
         AuthPage(session, google, config.allowed_emails, config.public_url).register(app)
         frame.register(app)

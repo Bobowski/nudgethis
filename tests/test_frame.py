@@ -48,7 +48,7 @@ async def test_say_repaints_the_stream(client):
         assert r.status_code == 200
         html = await collect(events)
         assert "make it red" in html
-        assert 'class="working"' in html
+        assert 'class="doing"' in html
         assert "On it." in html
         assert "Done." in html
         assert 'class="act undo"' in html
@@ -129,8 +129,8 @@ async def test_undo_reverts_the_change_and_reloads_again(client):
     await client.drain_tasks()
     page = (await client.get(FRAME.href("alpha"))).text
     assert "Undone. (fake)" in page
-    assert "#1 · Undone" in page
-    assert "#2 · Live" in page
+    assert re.search(r'id="step-1".*?Undone', page)
+    assert re.search(r'id="step-2".*?Done', page)
     async with client.stream("GET", FRAME_LIVE.href("alpha"), params=TAB, timeout=2) as live:
         assert await next_rev(live.iter_events()) == 2
 
@@ -166,8 +166,8 @@ async def test_the_panel_has_a_chat_composer_and_a_timeline(client):
     page = (await client.get(FRAME.href("alpha"))).text
     assert 'id="chatbox"' in page
     assert 'id="composer"' in page
-    assert "#1 · Live" in page
-    assert 'class="statusline"' not in page
+    assert re.search(r'id="step-1".*?Done', page)
+    assert 'class="doing"' not in page  # nothing is working now
 
 
 async def test_the_chat_shows_only_the_open_app(client):
@@ -200,3 +200,14 @@ async def test_a_bad_colour_is_400(client):
     assert r.status_code == 400
     r = await client.post(COLOR.href("nope"), json={"color": "blue"})
     assert r.status_code == 404
+
+
+async def test_the_chat_only_tells_and_links_to_the_timeline(client):
+    await live_change_id(client)
+    page = (await client.get(FRAME.href("alpha"))).text
+    chat = page[page.index('id="msgs"') : page.index('class="timeline"')]
+    assert 'class="act undo"' not in chat
+    assert "app.frame.show(&#x27;step-1&#x27;)" in chat or "app.frame.show('step-1')" in chat
+    timeline = page[page.index('class="timeline"') :]
+    assert 'class="act undo"' in timeline
+    assert "change it" in timeline  # the person's own words, not the coder's brief

@@ -305,3 +305,23 @@ async def test_a_missing_public_repo_fails_before_making_anything(yard):
         home = (await client.get(HOME.href())).text
         assert "no public repo at https://github.com/someone/stario-blog" in home
     assert remote.sent("POST", f"{YARD}/api/v1/repos") == []
+
+
+async def test_the_description_is_the_new_apps_first_request(yard):
+    remote = Remote()
+    async with yard(remote) as client:
+        about = "A habit tracker: a few daily habits I tick off, with a streak for each."
+        r = await client.post(NEW_APP.href(), json={"new_name": "plants", "new_about": about})
+        assert r.status_code == 200
+        await client.drain_tasks()
+        await client.drain_tasks()
+        frame = (await client.get(FRAME.href("nudge-plants"))).text
+        assert about in frame  # the person's request, in the new app's own chat
+        assert 'id="step-1"' in frame  # Nudge started the first change
+
+
+async def test_the_home_page_offers_ideas_to_start_from(yard):
+    async with yard(Remote()) as client:
+        home = (await client.get(HOME.href())).text
+        assert "Describe your app" in home
+        assert "Habit tracker" in home and "Meal planner" in home

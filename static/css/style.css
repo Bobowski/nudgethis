@@ -149,8 +149,8 @@ input, textarea { font-size: max(16px, 1em); }
   align-items: center;
   gap: 4px 8px;
   margin-top: 1.75rem;
-  padding: 6px 6px 6px 16px;
-  border-radius: 24px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 20px;
 }
 .newname { flex: 1 1 12rem; display: flex; align-items: baseline; min-width: 0; overflow: hidden; font-size: 0.92rem; }
 .newname input {
@@ -166,6 +166,24 @@ input, textarea { font-size: max(16px, 1em); }
 }
 .newapp .make { background: var(--accent); color: var(--on-accent); border-color: var(--ink); }
 .newapp > .dim { font-size: 0.82rem; padding: 0 10px 4px 0; }
+.newabout {
+  flex: 1 1 100%;
+  min-height: 3.2em;
+  max-height: 30vh;
+  field-sizing: content;
+  font-family: inherit;
+  line-height: 1.4;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  padding: 8px 2px;
+  resize: none;
+  outline: none;
+}
+.ideas { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 6px; }
+.ideas .chip { border-width: 1.5px; font-weight: 600; font-size: 0.78rem; padding: 3px 11px; color: var(--dim); }
+.ideas .chip:hover { color: var(--ink); border-color: var(--accent); }
 .newfrom {
   flex: 1 1 100%;
   display: flex;
@@ -500,15 +518,6 @@ input, textarea { font-size: max(16px, 1em); }
 .seg { flex-wrap: wrap; border-radius: 14px; align-self: flex-start; }
 .seg button { border-radius: 10px; }
 
-.statusline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 18px 6px;
-  font-size: 0.82rem;
-  color: var(--dim);
-}
-.statusline .inkloop { width: 30px; flex: none; }
 
 .coder {
   flex: 1;
@@ -551,18 +560,24 @@ input, textarea { font-size: max(16px, 1em); }
 .step {
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 2px 12px;
-  padding: 12px 0;
+  align-items: start;
+  gap: 3px 12px;
+  padding: 14px 10px;
+  margin: 0 -10px;
   border-bottom: 1px solid var(--hairline);
+  border-radius: 10px;
+  scroll-margin: 40px;
 }
-.step .when { font-size: 0.75rem; color: var(--dim); }
-.step .brief { grid-column: 1; margin: 0; overflow-wrap: anywhere; }
-.step .status { grid-column: 1; font-size: 0.78rem; color: var(--dim); }
+.step .status { grid-column: 1; display: flex; gap: 8px; align-items: baseline; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.step .when { font-weight: 500; letter-spacing: 0; text-transform: none; }
+.step .brief { grid-column: 1; margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.step .result { grid-column: 1; margin: 0; font-size: 0.9rem; color: var(--dim); overflow-wrap: anywhere; }
 .step .took { grid-column: 1; font-size: 0.75rem; color: var(--dim); }
-.step .undo { grid-column: 2; grid-row: 1 / span 4; }
-.step.live .status { color: var(--accent); font-weight: 700; }
-.step.undone .brief, .step.dropped .brief { color: var(--dim); text-decoration: line-through; }
+.step .undo { grid-column: 2; grid-row: 1 / span 4; align-self: center; }
+.step.live .status { color: var(--accent); }
+.step.undone .brief, .step.dropped .brief { color: var(--dim); }
+.step.flash { animation: flash 1.6s var(--ease); }
+@keyframes flash { 0%, 40% { background: color-mix(in oklch, var(--accent) 16%, transparent); } }
 
 #msgs {
   flex: 1;
@@ -647,7 +662,30 @@ input, textarea { font-size: max(16px, 1em); }
 .step .act.undo { margin-top: 0; }
 
 .empty { color: var(--dim); font-size: 0.88rem; }
-.working { align-self: flex-start; }
+
+/* While Nudge or the coder works: one dim line that updates in place. */
+.doing {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--dim);
+}
+.doing .inkloop { width: 30px; height: 10px; }
+.doing .clock { font-variant-numeric: tabular-nums; opacity: 0.8; }
+.msg .details {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dim);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 3px;
+}
+.msg .details:hover { color: var(--ink); text-decoration-color: var(--accent); }
 
 .inkloop { width: 46px; height: 12px; display: block; }
 .inkloop path {
