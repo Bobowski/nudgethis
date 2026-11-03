@@ -127,8 +127,10 @@ def message_li(m: Message, current: str) -> HtmlElement | None:
             h.Span(
                 {"class": "thumbs"},
                 *[
+                    # A picture opens over the page, not in a new one.
                     h.A(
-                        {"href": SHOT.href(s), "target": "_blank"},
+                        {"href": SHOT.href(s)},
+                        data.on("click", "$_shot = el.href; $_lightbox.showModal()", prevent=True),
                         h.Img({"src": SHOT.href(s), "alt": "shot"}),
                     )
                     for s in m.shots
@@ -229,7 +231,7 @@ def composer(name: str) -> HtmlElement:
                 data.bind("text"),
                 data.ref("_box"),
                 data.effect(
-                    "$_sheet && $_view === 'chat'"
+                    "$_sheet && $_view === 'chat' && app.frame.fine()"
                     " && setTimeout(() => el.focus({preventScroll: true}), 80)"
                 ),
                 data.on(
@@ -425,6 +427,7 @@ def render(
                     "_hint": "",
                     "_inkwait": False,
                     "_listening": False,
+                    "_shot": "",
                 },
                 if_missing=True,
             ),
@@ -674,6 +677,18 @@ def render(
                     ),
                 ),
                 composer(name),
+            ),
+            # A chat picture, large, over everything; a tap anywhere closes it.
+            h.Dialog(
+                {"class": "lightbox", "aria-label": "picture"},
+                data.ref("_lightbox"),
+                data.preserve_attr("open"),
+                data.on("click", "el.close()"),
+                h.Img({"alt": "the picture sent with a message"}, data.attr("src", "$_shot")),
+                h.Button(
+                    {"type": "button", "class": "round close", "aria-label": "Close"},
+                    CLOSE_ICON,
+                ),
             ),
             h.Div(
                 {"id": "ink", "class": "ink"},
