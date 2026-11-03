@@ -128,6 +128,17 @@ input, textarea { font-size: max(16px, 1em); }
 #home li { padding: 0.6rem 0; border-top: var(--line) solid var(--ink); }
 #home li:last-child { border-bottom: var(--line) solid var(--ink); }
 #home li a { font-weight: 650; text-decoration: none; }
+/* Each app in its own colour: a dot before its name. */
+#home .apps li::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  flex: none;
+  align-self: center;
+  border-radius: 50%;
+  background: var(--dot, var(--accent));
+  border: var(--line) solid var(--ink);
+}
 #home li a:hover { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
 #home .appurl { margin-left: 0.75rem; font-size: 0.82rem; color: var(--dim); }
 #home .logout { margin-top: 2rem; color: var(--dim); font-size: 0.82rem; border-color: var(--hairline); }
@@ -187,6 +198,7 @@ input, textarea { font-size: max(16px, 1em); }
 }
 /* A phone: the panel covers all but a strip of the app; a tap on the strip closes it. */
 .stage.away { transform: translateX(-12%) scale(0.96); }
+.stage.awayleft { transform: translateX(12%) scale(0.96); }
 .scrim {
   position: absolute;
   inset: 0;
@@ -384,6 +396,55 @@ input, textarea { font-size: max(16px, 1em); }
 }
 #history.open { transform: none; }
 
+/* The apps panel: every app, from the left, to jump between them. */
+#apps {
+  position: absolute;
+  inset: 0 28px 0 0;
+  max-width: 360px;
+  z-index: 26;
+  border-right: var(--line) solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  padding: var(--edge) 0 var(--edge-bottom);
+  background: var(--paper);
+  transform: translateX(-105%);
+  transition: transform 0.5s var(--ease);
+}
+#apps.open { transform: none; }
+.applist { list-style: none; margin: 0; padding: 0 12px; overflow-y: auto; flex: 1; }
+.appitem a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 650;
+}
+.appitem a:hover { background: var(--tint); }
+.appitem.here a { background: var(--tint); box-shadow: inset 0 0 0 var(--line) var(--ink); }
+.appitem .dot { width: 14px; height: 14px; flex: none; border-radius: 50%; background: var(--dot); border: var(--line) solid var(--ink); }
+.appitem .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appitem .state { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: var(--dim); }
+.appitem .state .inkloop { width: 24px; height: 10px; }
+.appitem .state .inkloop path { stroke: var(--dot); }
+.appitem .new { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--dot); }
+
+.swatches { padding: 14px 22px 4px; border-top: 1px solid var(--hairline); }
+.swatches .name { display: block; margin-bottom: 8px; font-size: 0.72rem; font-weight: 700; color: var(--dim); letter-spacing: 0.08em; text-transform: uppercase; }
+.swatches .row { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--sw);
+  border: var(--line) solid var(--ink);
+  transition: translate 0.1s var(--ease), box-shadow 0.1s var(--ease);
+}
+.swatch.on { box-shadow: 2px 2px 0 var(--ink), 0 0 0 3px var(--paper), 0 0 0 5px var(--ink); }
+.swatch:active { translate: 1px 1px; }
+
 /* A large screen: the panel sits beside the app, and the app stays in use. */
 @media (min-width: 900px) {
   :root { --panel: 400px; }
@@ -391,6 +452,9 @@ input, textarea { font-size: max(16px, 1em); }
   .stage { transition: transform 0.55s var(--ease), right 0.5s var(--ease); }
   .stage.away { transform: none; right: var(--panel); }
   .scrim { display: none !important; }
+  /* The apps panel covers the app's left edge; a click beside it closes it. */
+  .stage.awayleft { transform: none; }
+  #frame:has(#apps.open) .scrim { display: block !important; background: oklch(0 0 0 / 0.1); }
 }
 
 .histhead {
@@ -662,7 +726,7 @@ input, textarea { font-size: max(16px, 1em); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stage, .pill, #history { transition: none; }
+  .stage, .pill, #history, #apps { transition: none; }
   .pill, .pill.bounce, .card, #composer, .pill[data-state="busy"] .orb { animation: none; }
   .inkloop path { animation: none; stroke-dasharray: none; }
   .shipmark.play path { animation: none; stroke-dashoffset: 0; }

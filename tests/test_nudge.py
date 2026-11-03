@@ -180,3 +180,16 @@ async def test_a_dead_placeholder_admits_it(spawn, tmp_path):
     async with spawn() as client:
         page = (await client.get(FRAME.href("alpha"))).text
         assert "I lost that one. Say it again." in page
+
+
+async def test_each_app_has_its_own_conversation(spawn):
+    captured = []
+    async with spawn(script(captured)) as client:
+        await say(client, "alpha", "alpha secret")
+        await client.drain_tasks()
+        await say(client, "beta", "hello beta")
+        await client.drain_tasks()
+    beta_turn = captured[-1]
+    text = repr(beta_turn[0]) + repr(beta_turn[1].instructions)
+    assert "hello beta" in text
+    assert "alpha secret" not in text

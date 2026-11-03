@@ -5,9 +5,10 @@ from stario.markup import HtmlElement, svg
 
 from app.coder.cursor import Model
 from app.common import markdown
+from app.common.palette import COLORS, DEFAULT, accent
 from app.common.shell import INK_LOOP, page
-from app.features.frame.data import Message
-from app.features.frame.urls import CODER, CODER_LIVE, FRAME_LIVE, SAY, UNDO
+from app.features.frame.data import Message, Pulse
+from app.features.frame.urls import CODER, CODER_LIVE, COLOR, FRAME, FRAME_LIVE, SAY, UNDO
 from app.features.home.urls import HOME
 from app.features.shots.urls import SHOT
 
@@ -91,6 +92,29 @@ def message_li(m: Message, current: str) -> HtmlElement:
         tag,
         h.Div({"class": "md"}, *markdown.render(m.text)),
         undo_button(m.change_id, current) if "undo" in m.actions and m.change_id else None,
+    )
+
+
+def app_li(name: str, here: bool, color: str, phase: str, latest: int) -> HtmlElement:
+    """One app in the apps panel: its colour, what its coder does, and a new reply."""
+    seen = string_literal(f"seen.{name}")
+    return h.Li(
+        {"class": "appitem here" if here else "appitem", "style": f"--dot: {accent(color)}"},
+        h.A(
+            {"href": FRAME.href(name)},
+            data.on("click", "$_apps = false") if here else None,
+            h.Span({"class": "dot", "aria-hidden": "true"}),
+            h.Span({"class": "name"}, name.removeprefix("nudge-")),
+            h.Span({"class": "state"}, INK_LOOP, "Deploying" if phase == "deploying" else "Working")
+            if phase
+            else None,
+            h.Span(
+                {"class": "new", "aria-label": "new reply"},
+                data.show(f"$_seen < {latest}" if here else f"app.pill.load({seen}, 0) < {latest}"),
+            )
+            if latest
+            else None,
+        ),
     )
 
 
@@ -287,18 +311,18 @@ def coder_panel(
 
 
 def render(
-    messages: list[Message],
+    pulse: Pulse,
     name: str,
     url: str,
     timeline: list[tuple],
-    phase: str,
     rev: int,
     tab: str,
     coder: HtmlElement,
+    names: list[str],
 ) -> HtmlElement:
-    here = [m for m in messages if m.app == name]
-    replies = [m for m in here if m.role == "nudge" and not m.thinking]
-    latest = replies[-1] if replies else None
+    here = pulse.messages
+    phase = pulse.phases.get(name, "")
+    color = pulse.colors.get(name, DEFAULT)
     if any(m.thinking for m in here):
         state, label = "busy", "Thinking"
     elif phase:
@@ -313,8 +337,9 @@ def render(
         doing = f"{verb} #{active[0]}: {active[1]}"
     else:
         doing = ""
-    latest_id = latest.id if latest else 0
+    latest_id = pulse.latest.get(name, 0)
     unread = f"$_seen < {latest_id}"
+    seen_key = string_literal(f"seen.{name}")
     return page(
         f"nudgethis · {name}",
         h.Div(
@@ -333,6 +358,8 @@ def render(
                     "_history": "",
                     "_hint": "",
                     "_inkwait": False,
+                    "_apps": False,
+                    "color": color,
                 },
                 if_missing=True,
             ),
@@ -341,8 +368,64 @@ def render(
             data.on("pagehide", "app.snap.stop()", target="window"),
             data.on(
                 "keydown",
-                "evt.key === 'Escape' && ($_compose = false, $_history = '')",
+                "evt.key === 'Escape' && ($_compose = false, $_history = '', $_apps = false)",
                 target="window",
+            ),
+            # The app's colour: every accent on the page follows it.
+            h.Style(f"#frame {{ --accent: {accent(color)}; }}"),
+            h.Aside(
+                {"id": "apps"},
+                data.class_("open", "$_apps"),
+                data.init("app.swipe.mount(el)"),
+                data.on("swipe-close", "$_apps = false"),
+                h.Header(
+                    {"class": "histhead"},
+                    h.A({"href": HOME.href(), "class": "home"}, "‹ nudgethis"),
+                    h.Span({"class": "appname"}, "Apps"),
+                    h.Button(
+                        {"type": "button", "class": "round close", "aria-label": "Back to the app"},
+                        data.on("click", "$_apps = false"),
+                        CLOSE_ICON,
+                    ),
+                ),
+                h.Ul(
+                    {"class": "applist"},
+                    *[
+                        app_li(
+                            other,
+                            other == name,
+                            pulse.colors.get(other, DEFAULT),
+                            pulse.phases.get(other, ""),
+                            pulse.latest.get(other, 0),
+                        )
+                        for other in names
+                    ],
+                ),
+                h.Div(
+                    {"class": "swatches", "role": "group", "aria-label": f"colour of {name}"},
+                    h.Span({"class": "name"}, "Colour"),
+                    h.Div(
+                        {"class": "row"},
+                        *[
+                            h.Button(
+                                {
+                                    "type": "button",
+                                    "class": "swatch",
+                                    "style": f"--sw: {value}",
+                                    "aria-label": key,
+                                    "title": key,
+                                },
+                                data.class_("on", f"$color === '{key}'"),
+                                data.on(
+                                    "click",
+                                    f"$color = '{key}'; "
+                                    + at.post(COLOR.href(name), include=["color"]),
+                                ),
+                            )
+                            for key, value in COLORS.items()
+                        ],
+                    ),
+                ),
             ),
             h.Aside(
                 {"id": "history"},
@@ -382,7 +465,7 @@ def render(
                     data.show("$_history === 'chat'"),
                     data.init("el.pod ??= app.pod(el)"),
                     *(
-                        [message_li(m, name) for m in messages]
+                        [message_li(m, name) for m in here]
                         or [
                             h.Li(
                                 {"class": "empty"},
@@ -421,6 +504,7 @@ def render(
             h.Div(
                 {"class": "stage"},
                 data.class_("away", "$_history !== ''"),
+                data.class_("awayleft", "$_apps"),
                 h.Iframe(
                     {"id": "app-frame", "src": url, "title": name},
                     data.ignore_morph(),
@@ -433,15 +517,19 @@ def render(
                     },
                     data.class_("bottom", "$_dock === 'bottom'"),
                     data.init(
-                        "$_dock = app.pill.load('dock', 'top'); $_seen = app.pill.load('seen', 0)"
+                        "$_dock = app.pill.load('dock', 'top');"
+                        f" $_seen = app.pill.load({seen_key}, 0)"
                     ),
-                    data.effect("app.pill.save('dock', $_dock); app.pill.save('seen', $_seen)"),
+                    data.effect(
+                        f"app.pill.save('dock', $_dock); app.pill.save({seen_key}, $_seen)"
+                    ),
                     data.on("pill-dock", "$_dock = evt.detail"),
                     data.on("pill-pull", "$_compose = true"),
                     data.on(
                         "pill-swipe",
-                        "evt.detail === 'left' && ($_compose = false, $_history = 'chat',"
-                        " $_seen = +el.dataset.latest)",
+                        "evt.detail === 'left' ? ($_compose = false, $_apps = false,"
+                        " $_history = 'chat', $_seen = +el.dataset.latest)"
+                        " : ($_compose = false, $_history = '', $_apps = true)",
                     ),
                     data.on(
                         "pill-tap",
@@ -486,8 +574,8 @@ def render(
                 ),
                 h.Button(
                     {"type": "button", "class": "scrim", "aria-label": "Back to the app"},
-                    data.show("$_history !== ''"),
-                    data.on("click", "$_history = ''"),
+                    data.show("$_history !== '' || $_apps"),
+                    data.on("click", "$_history = ''; $_apps = false"),
                 ),
             ),
             h.Div(

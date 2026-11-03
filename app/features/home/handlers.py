@@ -10,6 +10,7 @@ from stario.datastar import SSE, read_signals
 from app.coder import CoderError, github
 from app.coder.yard import Yard
 from app.config import Config
+from app.features.frame import data as frame_store
 from app.features.home import data as store
 from app.features.home.urls import HOME, HOME_LIVE, NEW_APP
 from app.features.home.views import render
@@ -33,7 +34,13 @@ class HomePage:
             app.add(route, handler, middleware=[self.signed_in])
 
     def page(self, made: list[tuple]):
-        return render(self.config.apps, made, self.config.domain, self.yard is not None)
+        return render(
+            self.config.apps,
+            made,
+            self.config.domain,
+            self.yard is not None,
+            frame_store.get_colors(self.db),
+        )
 
     async def show(self, c: Context, w: Writer) -> None:
         w.html(self.page(self.db.query(store.APPS_SQL)))
