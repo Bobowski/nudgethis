@@ -134,6 +134,20 @@ async def public_files(http: httpx.AsyncClient, source: str) -> list[File]:
         raise CoderError(f"could not read {source}: {exc}") from exc
 
 
+# Text up to this much goes inside the one tree request; the rest goes up as blobs.
+INLINE_BYTES = 8 * 1024 * 1024
+
+
+def as_text(content: bytes) -> str | None:
+    """The file as text that the tree API stores byte for byte, or None for a binary."""
+    if b"\0" in content:
+        return None
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 async def write_files(
     http: httpx.AsyncClient, files: list[File], repo: str, write: str, name: str, source: str
 ) -> None:
@@ -149,15 +163,24 @@ async def write_files(
         {"message": f"Start from {source}", "content": base64.b64encode(readme).decode()},
     )
     entries = []
+    inline = 0
     for f in files:
-        made = await call(
-            http,
-            write,
-            "POST",
-            f"/repos/{dst}/git/blobs",
-            {"content": base64.b64encode(f.content).decode(), "encoding": "base64"},
-        )
-        entries.append({"path": f.path, "mode": f.mode, "type": "blob", "sha": made["sha"]})
+        entry: dict[str, str] = {"path": f.path, "mode": f.mode, "type": "blob"}
+        text = as_text(f.content)
+        if text is not None and inline + len(f.content) <= INLINE_BYTES:
+            # The tree request carries the text: one call for the whole template.
+            entry["content"] = text
+            inline += len(f.content)
+        else:
+            made = await call(
+                http,
+                write,
+                "POST",
+                f"/repos/{dst}/git/blobs",
+                {"content": base64.b64encode(f.content).decode(), "encoding": "base64"},
+            )
+            entry["sha"] = made["sha"]
+        entries.append(entry)
     entries.append(
         {"path": "README.md", "mode": "100644", "type": "blob", "sha": first["content"]["sha"]}
     )
