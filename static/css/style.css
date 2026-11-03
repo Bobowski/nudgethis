@@ -16,7 +16,7 @@
   --on-accent: oklch(0.98 0.006 80);
 
   /* Liquid glass: a thin tinted pane, a bright rim, a soft drop. */
-  --glass: oklch(0.99 0.004 80 / 0.56);
+  --glass: oklch(0.99 0.004 80 / 0.9);
   --glass-rim: oklch(1 0 0 / 0.6);
   --glass-sheen: oklch(1 0 0 / 0.9);
   --glass-shade: oklch(0.2 0.02 60 / 0.22);
@@ -35,7 +35,7 @@
     --dim: oklch(0.72 0.008 70);
     --hairline: oklch(0.92 0.008 80 / 0.18);
     --tint: oklch(0.28 0.012 60);
-    --glass: oklch(0.26 0.01 60 / 0.55);
+    --glass: oklch(0.24 0.01 60 / 0.9);
     --glass-rim: oklch(1 0 0 / 0.16);
     --glass-sheen: oklch(1 0 0 / 0.22);
     --glass-shade: oklch(0 0 0 / 0.5);
@@ -67,6 +67,9 @@ button {
   cursor: pointer;
 }
 button:disabled { opacity: 0.4; cursor: default; }
+/* 16px or more: iOS Safari zooms the page into a smaller field. */
+input, textarea { font-size: max(16px, 1em); }
+::placeholder { color: var(--dim); opacity: 1; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .glass {
@@ -128,7 +131,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* ---------- stage: the app, full screen ---------- */
 
-#frame { position: fixed; inset: 0; overflow: hidden; background: var(--tint); }
+#frame { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--tint); }
 
 .stage {
   position: absolute;
@@ -174,9 +177,10 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 0 12px;
   pointer-events: none;
 }
-#nudge.bottom { top: auto; bottom: var(--edge-bottom); flex-direction: column-reverse; }
+#nudge.bottom { top: auto; bottom: calc(var(--edge-bottom) + var(--kb, 0px)); flex-direction: column-reverse; }
 #nudge > * { pointer-events: auto; }
-.snapping #nudge { visibility: hidden; }
+.snapping #nudge,
+#frame:has(.ink.on) #nudge { visibility: hidden; }
 
 .pill {
   position: relative;
@@ -229,25 +233,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .pill[data-state="busy"] .orb { animation: breathe 1.6s ease-in-out infinite; }
 
-.pill:has(.orb.unread) {
-  box-shadow:
-    inset 0 1px 0 var(--glass-sheen),
-    0 0 0 1px color-mix(in oklch, var(--accent) 35%, transparent),
-    0 0 28px 2px var(--glow),
-    0 12px 32px -10px var(--glass-shade);
-}
-.pill:has(.orb.unread):not(.bounce) { animation: glow 2.6s ease-in-out infinite; }
 
 @keyframes breathe { 50% { scale: 0.7; opacity: 0.7; } }
-@keyframes glow {
-  50% {
-    box-shadow:
-      inset 0 1px 0 var(--glass-sheen),
-      0 0 0 1px color-mix(in oklch, var(--accent) 50%, transparent),
-      0 0 40px 6px var(--glow),
-      0 12px 32px -10px var(--glass-shade);
-  }
-}
 
 .shipmark {
   position: absolute;
@@ -293,13 +280,27 @@ button:disabled { opacity: 0.4; cursor: default; }
 .pill:not(.bounce) { animation: pop 0.35s var(--spring); }
 @keyframes pop { from { scale: 0.8; opacity: 0; } }
 
-.peek { width: min(420px, 100%); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-.peek p { margin: 0; white-space: pre-wrap; overflow-wrap: break-word; }
-.peek .act.undo { margin: 0; align-self: flex-start; }
-.peek .chip { align-self: flex-start; border-color: transparent; color: var(--dim); padding-left: 0; }
 
 /* ---------- composer ---------- */
 
+.composer .reply {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 2px 4px 10px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.9rem;
+}
+.composer .reply p {
+  flex: 1;
+  margin: 0;
+  max-height: 7.5em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.composer .reply .act.undo { margin: 0; flex: none; font-size: 0.82rem; padding: 3px 12px; }
 .composer .hint { margin: 2px 6px 8px; font-size: 0.8rem; color: var(--dim); }
 
 .pend { display: flex; gap: 8px; margin: 2px 4px 10px; }
@@ -331,7 +332,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   min-height: 36px;
   max-height: 30vh;
   field-sizing: content;
-  font: inherit;
+  font-family: inherit;
+  line-height: 22px;
   color: inherit;
   background: transparent;
   border: 0;
@@ -569,29 +571,34 @@ button:disabled { opacity: 0.4; cursor: default; }
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  margin: 0 12px var(--edge-bottom);
-  padding: 6px;
+  margin: 0 12px calc(var(--edge-bottom) + var(--kb, 0px));
+  padding: 8px;
   border-radius: 24px;
+  background: var(--paper);
 }
-.inktools { display: flex; gap: 2px; }
-.inktools .round { width: 38px; height: 38px; color: var(--dim); }
+.inktools { display: flex; gap: 2px; justify-content: space-between; flex: 1 1 100%; }
+@media (min-width: 640px) { .inktools { flex: none; } }
+.inktools .round { width: 40px; height: 40px; color: var(--ink); }
 .inktools .round.on { color: var(--accent); background: color-mix(in oklch, var(--accent) 14%, transparent); }
-.inkmsg { flex: 1 1 280px; display: flex; align-items: flex-end; gap: 6px; min-width: 0; }
+.inkmsg { flex: 1 1 260px; display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
 .inkmsg textarea {
   flex: 1;
   min-width: 0;
-  min-height: 38px;
+  min-height: 40px;
   max-height: 24vh;
   field-sizing: content;
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  padding: 8px 6px;
+  font-family: inherit;
+  line-height: 22px;
+  color: var(--ink);
+  background: var(--tint);
+  border: 1px solid var(--hairline);
+  border-radius: 20px;
+  padding: 8px 14px;
   resize: none;
   outline: none;
 }
-.inkmsg .round:not(.send) { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.inkmsg textarea:focus { border-color: var(--accent); }
+.inkmsg .round { width: 40px; height: 40px; }
 
 /* ---------- misc ---------- */
 

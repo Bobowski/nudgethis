@@ -19,10 +19,9 @@ STATUS_LABELS = {
 }
 
 
-SNAP_ICON = svg.Svg(
+DRAW_ICON = svg.Svg(
     {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
-    svg.Path({"d": "M4 8.5h3.2L9 6h6l1.8 2.5H20V19H4z"}),
-    svg.Circle({"cx": "12", "cy": "13.5", "r": "3.2"}),
+    svg.Path({"d": "M4 20l4-1 10.5-10.5-3-3L5 16zM14 7l3 3"}),
 )
 
 CLOSE_ICON = svg.Svg(
@@ -45,7 +44,6 @@ INK_TOOLS = (
     ("text", "Text", icon("M6 6.5h12M12 6.5V19")),
 )
 UNDO_ICON = icon("M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11")
-ATTACH_ICON = icon("M5 12.5l4.5 4.5L19 7")
 
 SEND_ICON = svg.Svg(
     {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
@@ -58,7 +56,7 @@ def undo_button(change_id: int, current: str) -> HtmlElement:
         {"type": "button", "class": "act undo"},
         data.on(
             "click",
-            f"$change_id = {change_id}; $_peek = false; "
+            f"$change_id = {change_id}; "
             + at.post(UNDO.href(current), include=["tab", "change_id"]),
         ),
         "Undo",
@@ -95,8 +93,9 @@ def message_li(m: Message, current: str) -> HtmlElement:
     )
 
 
-def composer(name: str, docked: bool) -> HtmlElement:
-    """The message form. Docked, it opens out of the pill; in the panel, it stays open."""
+def composer(name: str, docked: bool, reply: Message | None = None) -> HtmlElement:
+    """The message form. Docked, it opens out of the pill with Nudge's latest
+    reply on top; in the panel, it stays open."""
     return h.Form(
         {"id": "composer" if docked else "chatbox", "class": "glass card composer"},
         data.show("$_compose") if docked else None,
@@ -107,6 +106,15 @@ def composer(name: str, docked: bool) -> HtmlElement:
             prevent=True,
         ),
         data.indicator("_sending"),
+        h.Div(
+            {"class": "reply"},
+            h.P(reply.text),
+            undo_button(reply.change_id, name)
+            if "undo" in reply.actions and reply.change_id
+            else None,
+        )
+        if reply
+        else None,
         h.P(
             {"class": "hint", "role": "status"},
             data.show("$_hint"),
@@ -149,13 +157,13 @@ def composer(name: str, docked: bool) -> HtmlElement:
             if docked
             else None,
             h.Button(
-                {"type": "button", "class": "round snap", "aria-label": "Snap"},
+                {"type": "button", "class": "round snap", "aria-label": "Draw on the app"},
                 data.on(
                     "click",
                     "app.snap.go(h => $_hint = h)",
                 ),
                 data.attr("disabled", "$_sending"),
-                SNAP_ICON,
+                DRAW_ICON,
             ),
             h.Textarea(
                 {
@@ -165,7 +173,9 @@ def composer(name: str, docked: bool) -> HtmlElement:
                     "aria-label": "message",
                 },
                 data.bind("text"),
-                data.effect("$_compose && setTimeout(() => el.focus(), 60)") if docked else None,
+                data.effect("$_compose && setTimeout(() => el.focus({preventScroll: true}), 60)")
+                if docked
+                else None,
                 data.on(
                     "keydown",
                     "evt.key === 'Enter' && !evt.shiftKey"
@@ -313,7 +323,6 @@ def render(
         doing = ""
     latest_id = latest.id if latest else 0
     unread = f"$_seen < {latest_id}"
-    peek = latest
     return page(
         f"nudgethis · {name}",
         h.Div(
@@ -329,7 +338,6 @@ def render(
                     "_dock": "top",
                     "_seen": 0,
                     "_compose": False,
-                    "_peek": False,
                     "_history": "",
                     "_hint": "",
                     "_inkwait": False,
@@ -341,7 +349,7 @@ def render(
             data.on("pagehide", "app.snap.stop()", target="window"),
             data.on(
                 "keydown",
-                "evt.key === 'Escape' && ($_compose = false, $_peek = false, $_history = '')",
+                "evt.key === 'Escape' && ($_compose = false, $_history = '')",
                 target="window",
             ),
             h.Aside(
@@ -384,7 +392,7 @@ def render(
                         or [
                             h.Li(
                                 {"class": "empty"},
-                                "Pull the pill to say what you want. Hold it to snap.",
+                                "Tap the pill to say what you want. Hold it to draw on the app.",
                             )
                         ]
                     ),
@@ -435,17 +443,15 @@ def render(
                     ),
                     data.effect("app.pill.save('dock', $_dock); app.pill.save('seen', $_seen)"),
                     data.on("pill-dock", "$_dock = evt.detail"),
-                    data.on("pill-pull", "$_peek = false; $_compose = true"),
+                    data.on("pill-pull", "$_compose = true; $_seen = +el.dataset.latest"),
                     data.on(
                         "pill-swipe",
-                        "evt.detail === 'left' && ($_peek = false, $_history = 'chat',"
+                        "evt.detail === 'left' && ($_history = 'chat',"
                         " $_seen = +el.dataset.latest)",
                     ),
                     data.on(
                         "pill-tap",
-                        "$_peek || $_seen < +el.dataset.latest"
-                        " ? ($_peek = !$_peek, $_seen = +el.dataset.latest)"
-                        " : ($_compose = !$_compose)",
+                        "$_compose = true; $_seen = +el.dataset.latest",
                     ),
                     data.on(
                         "pill-hold",
@@ -453,7 +459,7 @@ def render(
                     ),
                     data.on(
                         "blur",
-                        "$_peek = false; !$text.trim() && !$shots.length && ($_compose = false)",
+                        "!$text.trim() && !$shots.length && ($_compose = false)",
                         target="window",
                     ),
                     h.Button(
@@ -479,30 +485,10 @@ def render(
                                 svg.Path({"d": "M4 12.5 10 18 20 6"}),
                             ),
                         ),
-                        h.Span(
-                            {"class": "label"},
-                            data.show(f"!({unread})") if state == "idle" else None,
-                            label,
-                        ),
-                        h.Span({"class": "label"}, data.show(unread), "New reply")
-                        if state == "idle"
-                        else None,
+                        h.Span({"class": "label"}, label),
                         INK_LOOP if state == "busy" else None,
                     ),
-                    h.Div(
-                        {"class": "glass card peek"},
-                        data.show("$_peek && !$_compose"),
-                        h.P(peek.text) if peek else h.P({"class": "dim"}, "Nothing new."),
-                        undo_button(peek.change_id, name)
-                        if peek and "undo" in peek.actions and peek.change_id
-                        else None,
-                        h.Button(
-                            {"type": "button", "class": "chip"},
-                            data.on("click", "$_peek = false; $_history = 'chat'"),
-                            "History",
-                        ),
-                    ),
-                    composer(name, docked=True),
+                    composer(name, docked=True, reply=latest),
                 ),
                 h.Button(
                     {"type": "button", "class": "scrim", "aria-label": "Back to the app"},
@@ -532,7 +518,7 @@ def render(
                     {"class": "glass inkbar"},
                     data.on(
                         "submit",
-                        "!$_inkwait && ($shots = app.ink.take(), "
+                        "!$_inkwait && ($shots = app.ink.take(), $_compose = false, "
                         + at.post(SAY.href(name), include=["tab", "text", "shots"])
                         + ")",
                         prevent=True,
@@ -585,17 +571,6 @@ def render(
                                 "evt.key === 'Enter' && !evt.shiftKey"
                                 " && (evt.preventDefault(), el.form.requestSubmit())",
                             ),
-                        ),
-                        h.Button(
-                            {
-                                "type": "button",
-                                "class": "round",
-                                "aria-label": "Attach to the message",
-                                "title": "Attach to the message",
-                            },
-                            data.on("click", "$shots = app.ink.take(); $_compose = true"),
-                            data.attr("disabled", "$_inkwait"),
-                            ATTACH_ICON,
                         ),
                         h.Button(
                             {"type": "submit", "class": "round send", "aria-label": "Send"},

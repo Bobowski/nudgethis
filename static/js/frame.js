@@ -6,6 +6,22 @@ app.frame = {
 
   bind(el) {
     this.el = el;
+    this.keyboard();
+  },
+
+  // iOS lays fixed elements out behind the on-screen keyboard. --kb is the
+  // keyboard's height, so the bars at the bottom can ride above it.
+  keyboard() {
+    const vv = window.visualViewport;
+    if (!vv || this.kbBound) return;
+    this.kbBound = true;
+    const set = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--kb", `${Math.round(kb)}px`);
+    };
+    vv.addEventListener("resize", set);
+    vv.addEventListener("scroll", set);
+    set();
   },
 
   mark(el) {

@@ -140,7 +140,7 @@ Install is `.cursor/cloud-install.sh`.
 
 ## This app
 
-nudgethis is a frame around a live web app, full-size in an iframe, with a glass pill over it. The user talks to Nudge (pull the pill, or swipe left for the Chat and Timeline panel), snaps and draws on the app, and Nudge changes the app's code; the iframe reloads when the change is live.
+nudgethis is a frame around a live web app, full-size in an iframe, with a glass pill over it. The user talks to Nudge (tap the pill for the composer, which shows Nudge's latest reply; swipe left for the Chat and Timeline panel; nothing else floats over the app, and an unread reply is only the red orb), draws on the app (the pencil, or hold the pill), and Nudge changes the app's code; the iframe reloads when the change is live.
 
 Nudge: OpenAI through pydantic-ai in `app/nudge/agent.py`; tools `start_change`, `undo`, `remember`. The lead owns `app/nudge/instructions.md`; each turn adds the open app, notes, and open changes. No `OPENAI_API_KEY` means a scripted fake model; tests always use it.
 
