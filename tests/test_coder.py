@@ -151,6 +151,7 @@ async def test_a_change_pushes_to_main_and_goes_live_after_the_deploy(cursor, tm
     assert launch["prompt"]["text"].startswith("make the title red")
     assert "Do not use computer use" in launch["prompt"]["text"]
     assert "may not be technical" in launch["prompt"]["text"]
+    assert "Work fast: test only what the change touches" in launch["prompt"]["text"]
     assert [i["mimeType"] for i in launch["prompt"]["images"]] == ["image/png"]
 
 
