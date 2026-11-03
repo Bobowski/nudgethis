@@ -63,8 +63,8 @@ MODELS = [
 class Remote:
     """Cursor and Yard, as one mock transport. Each finished run is a push; Yard deploys it."""
 
-    def __init__(self, run="FINISHED", deploy="ok"):
-        self.run, self.deploy = run, deploy
+    def __init__(self, run="FINISHED", deploy="ok", start=200):
+        self.run, self.deploy, self.start = run, deploy, start
         self.polls: dict[str, int] = {}
         self.pushes = 0
         self.calls: list[tuple[str, str, dict]] = []
@@ -74,6 +74,12 @@ class Remote:
         url = str(request.url)
         self.calls.append((request.method, url, body))
         if url == "https://api.cursor.com/v1/agents":
+            if self.start != 200:
+                error = {
+                    "code": "usage_limit_exceeded",
+                    "message": "Your prepaid balance is used up.",
+                }
+                return httpx.Response(self.start, json={"error": error})
             return httpx.Response(200, json={"agent": {"id": "bc-1"}, "run": {"id": "run-1"}})
         if url == "https://api.cursor.com/v1/agents/bc-1/runs":
             return httpx.Response(200, json={"run": {"id": "run-2"}})
@@ -144,6 +150,7 @@ async def test_a_change_pushes_to_main_and_goes_live_after_the_deploy(cursor, tm
     assert "autoCreatePR" not in launch
     assert launch["prompt"]["text"].startswith("make the title red")
     assert "Do not use computer use" in launch["prompt"]["text"]
+    assert "may not be technical" in launch["prompt"]["text"]
     assert [i["mimeType"] for i in launch["prompt"]["images"]] == ["image/png"]
 
 
@@ -167,7 +174,9 @@ async def test_a_failed_run_drops_the_change(cursor, tmp_path):
     async with cursor(Remote(run="ERROR")) as client:
         await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
         await client.drain_tasks()
-        assert "No change: Did run-1." in (await client.get(FRAME.href("alpha"))).text
+        page = (await client.get(FRAME.href("alpha"))).text
+        assert "make that change this time" in page
+        assert "Did run-1." not in page
     assert statuses(tmp_path) == ["dropped"]
 
 
@@ -176,7 +185,17 @@ async def test_a_failed_deploy_drops_the_change(cursor, tmp_path):
         await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
         await client.drain_tasks()
         page = (await client.get(FRAME.href("alpha"))).text
-        assert "Pushed, but the deploy did not go live: boom" in page
+        assert "the app didn" in page and "boom" not in page
+    assert statuses(tmp_path) == ["dropped"]
+
+
+async def test_an_empty_balance_is_said_in_plain_words(cursor, tmp_path):
+    async with cursor(Remote(start=400)) as client:
+        await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
+        await client.drain_tasks()
+        page = (await client.get(FRAME.href("alpha"))).text
+        assert "run out of credit" in page
+        assert "usage_limit" not in page and "answered 400" not in page
     assert statuses(tmp_path) == ["dropped"]
 
 
