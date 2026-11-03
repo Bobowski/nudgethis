@@ -97,7 +97,7 @@ def composer(name: str, docked: bool, reply: Message | None = None) -> HtmlEleme
     """The message form. Docked, it opens out of the pill with Nudge's latest
     reply on top; in the panel, it stays open."""
     return h.Form(
-        {"id": "composer" if docked else "chatbox", "class": "glass card composer"},
+        {"id": "composer" if docked else "chatbox", "class": "sticker card composer"},
         data.show("$_compose") if docked else None,
         data.on(
             "submit",
@@ -242,7 +242,7 @@ def coder_panel(
             {"class": "setting"},
             h.Span({"class": "name"}, "Model"),
             h.Select(
-                {"class": "glass picker", "aria-label": "model"},
+                {"class": "picker", "aria-label": "model"},
                 data.on("change", "$coder_set = 'model=' + el.value; " + post),
                 *[
                     h.Optgroup(
@@ -270,7 +270,7 @@ def coder_panel(
                 {"class": "setting"},
                 h.Span({"class": "name"}, p.label),
                 h.Div(
-                    {"class": "glass seg", "role": "group", "aria-label": p.label},
+                    {"class": "seg", "role": "group", "aria-label": p.label},
                     *[
                         h.Button(
                             {
@@ -366,7 +366,7 @@ def render(
                     ),
                 ),
                 h.Div(
-                    {"class": "glass tabs", "role": "tablist"},
+                    {"class": "tabs", "role": "tablist"},
                     *[
                         h.Button(
                             {"type": "button", "role": "tab"},
@@ -446,7 +446,7 @@ def render(
                     data.on("pill-pull", "$_compose = true; $_seen = +el.dataset.latest"),
                     data.on(
                         "pill-swipe",
-                        "evt.detail === 'left' && ($_history = 'chat',"
+                        "evt.detail === 'left' && ($_compose = false, $_history = 'chat',"
                         " $_seen = +el.dataset.latest)",
                     ),
                     data.on(
@@ -465,7 +465,7 @@ def render(
                     h.Button(
                         {
                             "type": "button",
-                            "class": "glass pill",
+                            "class": "sticker pill",
                             "data-state": state,
                             "aria-label": "Nudge: tap, pull, swipe, or hold",
                         },
@@ -515,7 +515,7 @@ def render(
                     ),
                 ),
                 h.Form(
-                    {"class": "glass inkbar"},
+                    {"class": "sticker inkbar"},
                     data.on(
                         "submit",
                         "!$_inkwait && ($shots = app.ink.take(), $_compose = false, "
