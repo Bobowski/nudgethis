@@ -101,6 +101,7 @@ def schema(tx: Tx) -> None:
         ("notes", {}),
         ("coders", {"app": "TEXT AS (data->>'app')"}),
         ("colors", {"app": "TEXT AS (data->>'app')"}),
+        ("usage", {"app": "TEXT AS (data->>'app')"}),
     ):
         tx.execute(
             f"CREATE TABLE IF NOT EXISTS {table} ("
@@ -316,6 +317,40 @@ def busy(db: LiteWriter, app: str) -> bool:
 
 def remove_app(tx: Tx, app: str) -> None:
     """Everything the frame keeps about one app: its chat, changes, notes, colour, coder."""
-    for table in ("messages", "changes", "colors", "coders"):
+    for table in ("messages", "changes", "colors", "coders", "usage"):
         tx.execute(f"DELETE FROM {table} WHERE app = :app", app=app)
     tx.execute("DELETE FROM notes WHERE data->>'app' = :app", app=app)
+
+
+def add_usage(tx: Tx, app: str, model: str, tokens_in: int, tokens_out: int) -> None:
+    """The tokens one turn of Nudge used."""
+    tx.execute(
+        "INSERT INTO usage (data) VALUES (:data)",
+        data=dumps({"app": app, "at": _now(), "model": model, "in": tokens_in, "out": tokens_out}),
+    )
+
+
+def list_usage(db: LiteWriter) -> list[tuple]:
+    """Per app: Nudge's turns and tokens, then its changes by status, and the
+    times of its live changes (created, ran, pushed, live) to add up."""
+    return db.query(
+        """
+        SELECT app,
+            (SELECT count(*) FROM usage u WHERE u.app = a.app),
+            (SELECT coalesce(sum(u.data->>'in'), 0) FROM usage u WHERE u.app = a.app),
+            (SELECT coalesce(sum(u.data->>'out'), 0) FROM usage u WHERE u.app = a.app),
+            (SELECT count(*) FROM changes c WHERE c.app = a.app AND c.status = 'live'),
+            (SELECT count(*) FROM changes c WHERE c.app = a.app AND c.status = 'undone'),
+            (SELECT count(*) FROM changes c WHERE c.app = a.app AND c.status = 'dropped'),
+            (SELECT count(*) FROM changes c WHERE c.app = a.app
+             AND c.status IN ('working', 'deploying')),
+            (SELECT json_group_array(json_array(c.data->>'ran', c.data->>'pushed',
+                c.data->>'live')) FROM changes c
+             WHERE c.app = a.app AND c.data->>'ran' IS NOT NULL),
+            (SELECT max(c.data->>'updated') FROM changes c WHERE c.app = a.app),
+            (SELECT json_group_array(s.value) FROM messages m, json_each(m.data->'shots') s
+             WHERE m.app = a.app)
+        FROM (SELECT DISTINCT app FROM messages UNION SELECT DISTINCT app FROM changes) a
+        ORDER BY app
+        """
+    )

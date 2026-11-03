@@ -8,6 +8,7 @@ from app.common.shell import INK_LOOP, page
 from app.features.auth.urls import LOGOUT
 from app.features.frame.urls import FRAME
 from app.features.home.urls import HOME_LIVE, NEW_APP, REMOVE_APP, SUGGEST
+from app.features.settings.urls import SETTINGS
 
 # A few things people build, to start from when the page is blank.
 IDEAS = (
@@ -63,10 +64,13 @@ def render(
             h.Header(
                 {"class": "homehead"},
                 h.H1("nudge", h.Span({"class": "this"}, "this")),
-                h.Button(
-                    {"type": "button", "class": "chip logout"},
-                    data.on("click", at.post(LOGOUT.href())),
-                    "Sign out",
+                h.Nav(
+                    h.A({"href": SETTINGS.href(), "class": "chip"}, "Settings"),
+                    h.Button(
+                        {"type": "button", "class": "chip logout"},
+                        data.on("click", at.post(LOGOUT.href())),
+                        "Sign out",
+                    ),
                 ),
             ),
             # One prompt: what to make. The name and the starting point follow from it.

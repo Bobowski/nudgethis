@@ -6,9 +6,7 @@ from stario import App, Span, serve
 from stario.http import same_origin, security_headers
 
 from app.assets import ASSETS
-from app.coder import CoderError
-from app.coder.cursor import Cursor
-from app.coder.yard import Yard
+from app.builder import Builder, Vault
 from app.common.session import Session
 from app.config import Config
 from app.features.auth.handlers import AuthPage
@@ -17,14 +15,17 @@ from app.features.frame import data as frame_data
 from app.features.frame.handlers import FramePage
 from app.features.home import data as home_data
 from app.features.home.handlers import HomePage
+from app.features.settings import data as settings_data
+from app.features.settings.handlers import SettingsPage
 from app.features.shots.handlers import ShotsPage
-from app.nudge.agent import build_agent, load_instructions
+from app.nudge.agent import load_instructions
 from app.oauth.google import Google
 
 
 def schema(tx: Tx) -> None:
     frame_data.schema(tx)
     home_data.schema(tx)
+    settings_data.schema(tx)
 
 
 async def bootstrap(app: App, span: Span):
@@ -35,31 +36,36 @@ async def bootstrap(app: App, span: Span):
     signed_in = session.require(AUTH_GOOGLE.href())
     app.use("/a", signed_in)
     app.use("/shots", signed_in)
-    agent = build_agent(config)
-    model_name = config.model if config.openai_api_key.strip() else "fake"
-    coder = "cursor" if config.cursor_api_key else "fake"
-    span.attrs({**await ASSETS.attach(app), "nudge.model": model_name, "nudge.coder": coder})
+    app.use("/settings", signed_in)
+    span.attrs(await ASSETS.attach(app))
     instructions = load_instructions()
+    # Tokens saved on the settings page are sealed with a key from SESSION_SECRET.
+    vault = Vault(config.session_secret)
     async with (
         LiteWriter(config.db_path, schema=schema, claim=30) as db,
-        agent,
         AsyncClient(timeout=30) as http,
     ):
-        cursor = Cursor(http, config.cursor_api_key) if coder == "cursor" else None
-        try:
-            models = await cursor.models() if cursor else ()
-        except CoderError as exc:
-            models = ()
-            span.attrs({"cursor.models_error": str(exc)})
-        yard = Yard(http, config.yard_url, config.yard_token) if config.yard_token else None
-        frame = FramePage(db, config, agent, model_name, instructions, cursor, yard, models)
-        HomePage(db, config, http, yard, signed_in, frame.first_request).register(app)
+        builder = Builder(config, http)
+        await builder.apply(settings_data.list_settings(db, vault))
+        span.attrs(
+            {
+                "nudge.model": builder.model_name,
+                "nudge.coder": "cursor" if builder.cursor else "fake",
+                "cursor.models_error": builder.models_error,
+            }
+        )
+        frame = FramePage(db, builder, instructions)
+        HomePage(db, builder, http, signed_in, frame.first_request).register(app)
+        SettingsPage(db, builder, vault).register(app)
         google = Google(http, config.google_client_id, config.google_client_secret)
         AuthPage(session, google, config.allowed_emails, config.public_url).register(app)
         frame.register(app)
         frame.resume(app, span)
         ShotsPage(config.shots_dir).register(app)
-        yield
+        try:
+            yield
+        finally:
+            await builder.close()
 
 
 if __name__ == "__main__":
