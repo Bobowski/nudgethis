@@ -47,7 +47,8 @@ SHOT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
 CODER_RULES = (
     " Do not use computer use, the desktop, a browser, or screenshots:"
     " no computerUse tool or subagent, and no recording."
-    " Read the code and run `just check`; that is enough proof."
+    " Work fast: test only what the change touches, and run `just check` once;"
+    " that is enough proof."
     " Your last message is shown as it is to the person who asked, who may not"
     " be technical. Make it only one to three short sentences in plain words"
     " about what they will see change in the app. No code, file names,"
