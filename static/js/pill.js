@@ -32,7 +32,14 @@ app.pill = {
       el.style.transform = x || y ? `translate(${x}px, ${y}px)` : "";
     };
 
+    // The pill turns into the composer on the tap, so the mouse events a
+    // touch sends after it would land on the app and blur the page.
+    el.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), {
+      passive: false,
+    });
+
     el.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
       start = { x: e.clientX, y: e.clientY, axis: null };
       el.setPointerCapture(e.pointerId);
       el.classList.add("pressed");

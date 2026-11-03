@@ -17,9 +17,9 @@ def render(
             {"id": "home"},
             data.signals({"new_name": ""}, if_missing=True),
             data.init(at.get(HOME_LIVE.href(), retry="always")),
-            h.H1("nudgethis"),
+            h.H1("nudge", h.Span({"class": "this"}, "this")),
             h.Form(
-                {"class": "glass newapp"},
+                {"class": "sticker newapp"},
                 data.on("submit", at.post(NEW_APP.href(), include=["new_name"]), prevent=True),
                 data.indicator("_making"),
                 h.Label(
