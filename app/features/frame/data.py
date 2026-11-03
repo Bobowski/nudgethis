@@ -302,3 +302,20 @@ def drop_change(tx: Tx, change_id: int) -> None:
         " WHERE id = :id AND status IN ('working', 'deploying')",
         id=change_id,
     )
+
+
+def busy(db: LiteWriter, app: str) -> bool:
+    """A change of the app is still working or deploying."""
+    return bool(
+        db.value(
+            "SELECT count(*) FROM changes WHERE app = :app AND status IN ('working', 'deploying')",
+            app=app,
+        )
+    )
+
+
+def remove_app(tx: Tx, app: str) -> None:
+    """Everything the frame keeps about one app: its chat, changes, notes, colour, coder."""
+    for table in ("messages", "changes", "colors", "coders"):
+        tx.execute(f"DELETE FROM {table} WHERE app = :app", app=app)
+    tx.execute("DELETE FROM notes WHERE data->>'app' = :app", app=app)

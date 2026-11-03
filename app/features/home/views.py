@@ -7,7 +7,7 @@ from app.common.palette import accent
 from app.common.shell import INK_LOOP, page
 from app.features.auth.urls import LOGOUT
 from app.features.frame.urls import FRAME
-from app.features.home.urls import HOME_LIVE, NEW_APP
+from app.features.home.urls import HOME_LIVE, NEW_APP, REMOVE_APP, SUGGEST
 
 # A few things people build, to start from when the page is blank.
 IDEAS = (
@@ -55,85 +55,103 @@ def render(
         "nudgethis",
         h.Main(
             {"id": "home"},
-            data.signals({"new_name": "", "new_from": "", "new_about": ""}, if_missing=True),
+            data.signals(
+                {"new_name": "", "new_about": "", "remove_name": "", "_hint": "", "_from": ""},
+                if_missing=True,
+            ),
             data.init(at.get(HOME_LIVE.href(), retry="always")),
-            h.H1("nudge", h.Span({"class": "this"}, "this")),
+            h.Header(
+                {"class": "homehead"},
+                h.H1("nudge", h.Span({"class": "this"}, "this")),
+                h.Button(
+                    {"type": "button", "class": "chip logout"},
+                    data.on("click", at.post(LOGOUT.href())),
+                    "Sign out",
+                ),
+            ),
+            # One prompt: what to make. The name and the starting point follow from it.
             h.Form(
                 {"class": "sticker newapp"},
                 data.on(
                     "submit",
-                    at.post(NEW_APP.href(), include=["new_name", "new_from", "new_about"]),
+                    at.post(NEW_APP.href(), include=["new_name", "new_about"]),
                     prevent=True,
                 ),
                 data.indicator("_making"),
                 h.Textarea(
                     {
-                        "class": "newabout",
-                        "rows": "2",
+                        "class": "prompt",
+                        "rows": "3",
                         "maxlength": 2000,
-                        "placeholder": "Describe your app: what should it do, and for whom?",
+                        "placeholder": "What do you want to make?",
                         "aria-label": "what the new app should do",
                     },
                     data.bind("new_about"),
+                    data.on(
+                        "input",
+                        at.get(SUGGEST.href(), include=["new_about"]),
+                        debounce="300ms",
+                    ),
+                    data.on(
+                        "keydown",
+                        "evt.key === 'Enter' && (evt.metaKey || evt.ctrlKey)"
+                        " && (evt.preventDefault(), el.form.requestSubmit())",
+                    ),
+                ),
+                h.Div(
+                    {"class": "newfoot"},
+                    h.Label(
+                        {"class": "where"},
+                        h.Input(
+                            {
+                                "class": "label",
+                                "maxlength": 30,
+                                "autocomplete": "off",
+                                "spellcheck": "false",
+                                "aria-label": "the app's name, in its address",
+                            },
+                            data.bind("new_name"),
+                            data.attr("placeholder", "$_hint || 'name'"),
+                            data.attr(
+                                "size", "Math.max(4, ($new_name || $_hint || 'name').length)"
+                            ),
+                        ),
+                        h.Span({"class": "dim"}, f".{domain}"),
+                    ),
+                    h.Span(
+                        {"class": "from dim"},
+                        data.text("$_from ? 'from ' + $_from : 'from the nudge template'"),
+                    ),
+                    h.Button(
+                        {"type": "submit", "class": "make"},
+                        data.attr("disabled", "$_making || !$new_about.trim()"),
+                        "Make it",
+                    ),
                 )
                 if can_make
-                else None,
-                h.Div(
-                    {"class": "ideas", "role": "group", "aria-label": "ideas"},
-                    *[
+                else h.P({"class": "dim newfoot"}, "Set YARD_TOKEN to make apps."),
+            ),
+            h.Ul(
+                {"class": "ideas", "aria-label": "ideas"},
+                *[
+                    h.Li(
                         h.Button(
-                            {"type": "button", "class": "chip"},
+                            {"type": "button"},
                             data.on(
                                 "click",
-                                f"$new_about = {string_literal(about)};"
-                                f" $new_name = $new_name || {string_literal(slug)}",
+                                f"$new_about = {string_literal(about)}; $new_name = ''; "
+                                + at.get(SUGGEST.href(), include=["new_about"]),
                             ),
-                            label,
+                            h.Strong(label),
+                            h.Span(about),
                         )
-                        for label, slug, about in IDEAS
-                    ],
-                )
-                if can_make
-                else None,
-                h.Label(
-                    {"class": "newname"},
-                    h.Span({"class": "dim"}, "https://"),
-                    h.Input(
-                        {
-                            "placeholder": "plants",
-                            "maxlength": 30,
-                            "required": True,
-                            "autocomplete": "off",
-                            "aria-label": "name of the new app",
-                        },
-                        data.bind("new_name"),
-                    ),
-                    h.Span({"class": "dim"}, f".{domain}"),
-                ),
-                h.Button(
-                    {"type": "submit", "class": "make"},
-                    data.attr("disabled", "$_making || !$new_name.trim()"),
-                    "New app",
-                )
-                if can_make
-                else h.Span({"class": "dim"}, "Set YARD_TOKEN to make apps."),
-                h.Label(
-                    {"class": "newfrom"},
-                    h.Span({"class": "dim"}, "Start from"),
-                    h.Input(
-                        {
-                            "type": "url",
-                            "placeholder": "nudge-template, or a public GitHub repo",
-                            "maxlength": 200,
-                            "autocomplete": "off",
-                            "aria-label": "a public GitHub repo to start from",
-                        },
-                        data.bind("new_from"),
-                    ),
-                )
-                if can_make
-                else None,
-            ),
+                    )
+                    for label, _, about in IDEAS
+                ],
+            )
+            if can_make
+            else None,
+            h.H2("Your apps") if made or configured else None,
             h.Ul(
                 {"class": "apps"},
                 *[
@@ -142,11 +160,25 @@ def render(
                         h.A({"href": FRAME.href(name)}, name.removeprefix("nudge-"))
                         if status == "ready"
                         else h.Span({"class": "name"}, name.removeprefix("nudge-")),
-                        h.Span({"class": "appurl"}, url),
                         h.Span({"class": f"state {status}"}, INK_LOOP, step)
                         if status == "creating"
-                        else h.Span({"class": f"state {status}"}, step)
+                        else h.Span({"class": f"state {status}"}, "Didn't start: ", step)
                         if status == "failed"
+                        else h.Span({"class": "appurl"}, url.removeprefix("https://")),
+                        h.Button(
+                            {
+                                "type": "button",
+                                "class": "remove",
+                                "aria-label": f"Remove {name.removeprefix('nudge-')}",
+                                "title": "Remove",
+                            },
+                            data.on(
+                                "click",
+                                f"$remove_name = {string_literal(name)}; $_remove.showModal()",
+                            ),
+                            "×",
+                        )
+                        if status != "creating"
                         else None,
                     )
                     for name, url, status, step in made
@@ -155,15 +187,42 @@ def render(
                     h.Li(
                         {"style": f"--dot: {accent(colors.get(name, ''))}"},
                         h.A({"href": FRAME.href(name)}, name),
-                        h.Span({"class": "appurl"}, url),
+                        h.Span({"class": "appurl"}, url.removeprefix("https://")),
                     )
                     for name, url in configured
                 ],
             ),
-            h.Button(
-                {"type": "button", "class": "logout"},
-                data.on("click", at.post(LOGOUT.href())),
-                "Sign out",
+            # Asks once before an app leaves the list.
+            h.Dialog(
+                {"class": "sticker confirm"},
+                data.ref("_remove"),
+                data.preserve_attr("open"),
+                h.P(
+                    h.Strong(
+                        "Remove ", h.Span(data.text("$remove_name.replace('nudge-', '')")), "?"
+                    ),
+                ),
+                h.P(
+                    {"class": "dim"},
+                    "Its chat and its history leave nudgethis. Its code and its site stay.",
+                ),
+                h.Div(
+                    {"class": "row"},
+                    h.Button(
+                        {"type": "button", "class": "chip"},
+                        data.on("click", "$_remove.close()"),
+                        "Keep it",
+                    ),
+                    h.Button(
+                        {"type": "button", "class": "chip danger"},
+                        data.on(
+                            "click",
+                            "$_remove.close(); "
+                            + at.post(REMOVE_APP.href(), include=["remove_name"]),
+                        ),
+                        "Remove",
+                    ),
+                ),
             ),
         ),
     )
