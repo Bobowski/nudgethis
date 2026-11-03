@@ -49,3 +49,18 @@ def test_a_long_report_is_cut_at_a_line_break():
     assert len(brief) < 2500
     assert brief.endswith("x\n\n…")
     assert brief_of("short") == "short"
+
+
+def test_took_says_where_the_time_went():
+    from app.features.frame.views import took
+
+    assert took(
+        "2026-11-03T07:00:00+00:00",
+        "2026-11-03T07:00:06+00:00",
+        "2026-11-03T07:03:26+00:00",
+        "2026-11-03T07:04:10+00:00",
+    ) == ("Took 4 min 10 s: Nudge 6 s, coding 3 min 20 s, going live 44 s")
+    assert took(None, "2026-11-03T07:00:00+00:00", None, "2026-11-03T07:02:00+00:00") == (
+        "Took 2 min: coding 2 min"
+    )
+    assert took(None, "2026-11-03T07:00:00+00:00", None, None) == ""

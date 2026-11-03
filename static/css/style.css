@@ -540,7 +540,8 @@ input, textarea { font-size: max(16px, 1em); }
 .step .when { font-size: 0.75rem; color: var(--dim); }
 .step .brief { grid-column: 1; margin: 0; overflow-wrap: anywhere; }
 .step .status { grid-column: 1; font-size: 0.78rem; color: var(--dim); }
-.step .undo { grid-column: 2; grid-row: 1 / span 3; }
+.step .took { grid-column: 1; font-size: 0.75rem; color: var(--dim); }
+.step .undo { grid-column: 2; grid-row: 1 / span 4; }
 .step.live .status { color: var(--accent); font-weight: 700; }
 .step.undone .brief, .step.dropped .brief { color: var(--dim); text-decoration: line-through; }
 
