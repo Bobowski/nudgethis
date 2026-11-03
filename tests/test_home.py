@@ -1,5 +1,7 @@
 import base64
+import io
 import json
+import tarfile
 
 import httpx
 import pytest
@@ -23,8 +25,9 @@ def b64(text: str) -> str:
 class Remote:
     """Yard and GitHub, as one mock transport."""
 
-    def __init__(self, deploy="ok"):
+    def __init__(self, deploy="ok", tarball: bytes | None = None):
         self.deploy = deploy
+        self.tarball = tarball
         self.calls: list[tuple[str, str, object, str]] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -58,6 +61,10 @@ class Remote:
                 "deploy": {"started": "t1", "status": self.deploy, "error": "boom"}
             },
         }
+        if url == "https://codeload.github.com/someone/stario-blog/tar.gz/HEAD":
+            if self.tarball is None:
+                return httpx.Response(404)
+            return httpx.Response(200, content=self.tarball)
         if (method, url) == ("POST", f"{YARD}/api/v1/repos/token"):
             assert isinstance(body, dict)
             return httpx.Response(200, json={"token": "token-" + body["repo"].rsplit("/", 1)[1]})
@@ -227,3 +234,74 @@ async def test_an_unexpected_error_marks_the_app_failed(yard):
         home = (await client.get(HOME.href())).text
         assert "KeyError" in home
         assert "Making the repo" not in home
+
+
+def tarball(files: dict[str, bytes], links: dict[str, str] | None = None) -> bytes:
+    """A GitHub-style tarball: every path under one top folder."""
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+        for path, content in files.items():
+            info = tarfile.TarInfo(f"someone-stario-blog-abc123/{path}")
+            info.size = len(content)
+            info.mode = 0o755 if path.endswith(".sh") else 0o644
+            tar.addfile(info, io.BytesIO(content))
+        for path, target in (links or {}).items():
+            info = tarfile.TarInfo(f"someone-stario-blog-abc123/{path}")
+            info.type, info.linkname = tarfile.SYMTYPE, target
+            tar.addfile(info)
+    return out.getvalue()
+
+
+async def test_a_new_app_can_start_from_a_public_repo(yard):
+    remote = Remote(
+        tarball=tarball(
+            {"README.md": b"theirs", "pyproject.toml": b"[project]\n", "run.sh": b"#!/bin/sh"},
+            {"docs/link": "../README.md"},
+        )
+    )
+    async with yard(remote) as client:
+        r = await client.post(
+            NEW_APP.href(),
+            json={"new_name": "plants", "new_from": "https://github.com/someone/stario-blog.git"},
+        )
+        assert r.status_code == 200
+        await client.drain_tasks()
+        home = (await client.get(HOME.href())).text
+        assert 'href="/a/nudge-plants"' in home
+    dst = "https://api.github.com/repos/Bobowski/nudge-plants"
+    (tree,) = remote.sent("POST", f"{dst}/git/trees")
+    assert [(e["path"], e["mode"]) for e in tree["tree"]] == [
+        ("pyproject.toml", "100644"),
+        ("run.sh", "100755"),
+        ("docs/link", "120000"),
+        ("README.md", "100644"),
+    ]
+    blobs = [base64.b64decode(b["content"]) for b in remote.sent("POST", f"{dst}/git/blobs")]
+    assert blobs == [b"[project]\n", b"#!/bin/sh", b"../README.md"]
+    (readme,) = remote.sent("PUT", f"{dst}/contents/README.md")
+    assert b"from https://github.com/someone/stario-blog" in base64.b64decode(readme["content"])
+    # The template's repo is never read: no token for it.
+    tokens = [b["repo"] for b in remote.sent("POST", f"{YARD}/api/v1/repos/token")]
+    assert tokens == [REPO]
+
+
+async def test_a_bad_start_from_url_gets_a_toast(yard):
+    remote = Remote()
+    async with yard(remote) as client:
+        for bad in ("http://github.com/a/b", "https://gitlab.com/a/b", "nudge-template"):
+            r = await client.post(NEW_APP.href(), json={"new_name": "blog", "new_from": bad})
+            assert "public GitHub repo" in r.text
+    assert remote.sent("POST", f"{YARD}/api/v1/repos") == []
+
+
+async def test_a_missing_public_repo_fails_before_making_anything(yard):
+    remote = Remote()
+    async with yard(remote) as client:
+        await client.post(
+            NEW_APP.href(),
+            json={"new_name": "blog", "new_from": "https://github.com/someone/stario-blog"},
+        )
+        await client.drain_tasks()
+        home = (await client.get(HOME.href())).text
+        assert "no public repo at https://github.com/someone/stario-blog" in home
+    assert remote.sent("POST", f"{YARD}/api/v1/repos") == []

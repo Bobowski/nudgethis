@@ -20,12 +20,16 @@ def render(
         "nudgethis",
         h.Main(
             {"id": "home"},
-            data.signals({"new_name": ""}, if_missing=True),
+            data.signals({"new_name": "", "new_from": ""}, if_missing=True),
             data.init(at.get(HOME_LIVE.href(), retry="always")),
             h.H1("nudge", h.Span({"class": "this"}, "this")),
             h.Form(
                 {"class": "sticker newapp"},
-                data.on("submit", at.post(NEW_APP.href(), include=["new_name"]), prevent=True),
+                data.on(
+                    "submit",
+                    at.post(NEW_APP.href(), include=["new_name", "new_from"]),
+                    prevent=True,
+                ),
                 data.indicator("_making"),
                 h.Label(
                     {"class": "newname"},
@@ -49,6 +53,22 @@ def render(
                 )
                 if can_make
                 else h.Span({"class": "dim"}, "Set YARD_TOKEN to make apps."),
+                h.Label(
+                    {"class": "newfrom"},
+                    h.Span({"class": "dim"}, "Start from"),
+                    h.Input(
+                        {
+                            "type": "url",
+                            "placeholder": "nudge-template, or a public GitHub repo",
+                            "maxlength": 200,
+                            "autocomplete": "off",
+                            "aria-label": "a public GitHub repo to start from",
+                        },
+                        data.bind("new_from"),
+                    ),
+                )
+                if can_make
+                else None,
             ),
             h.Ul(
                 {"class": "apps"},

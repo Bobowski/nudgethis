@@ -10,7 +10,7 @@ import httpx
 from app.coder import CoderError
 
 API = "https://api.cursor.com/v1"
-POLL = 8.0
+POLL = 4.0
 DONE = ("FINISHED", "ERROR", "CANCELLED", "EXPIRED")
 
 

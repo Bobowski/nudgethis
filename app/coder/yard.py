@@ -8,7 +8,7 @@ import httpx
 
 from app.coder import CoderError
 
-POLL = 3.0
+POLL = 1.5
 
 
 @dataclass(frozen=True, slots=True)
