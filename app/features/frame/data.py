@@ -178,7 +178,7 @@ def list_timeline(db: LiteWriter, app: str) -> list[tuple]:
     """The changes of the app, newest first: id, brief, status, updated, and when
     each step happened: asked (the person's message), created (Nudge handed it
     on), ran (the coder started), pushed (the coder finished), live; then what
-    the person asked, and the last reply about it."""
+    the person asked, the last reply about it, and Nudge's short title."""
     return db.query(
         """
         SELECT c.id, c.data->>'brief', c.status, c.data->>'updated',
@@ -191,7 +191,8 @@ def list_timeline(db: LiteWriter, app: str) -> list[tuple]:
              ORDER BY m.id LIMIT 1),
             (SELECT m.data->>'text' FROM messages m
              WHERE json_extract(m.data, '$.change_id') = c.id AND m.data->>'role' = 'nudge'
-             ORDER BY m.id DESC LIMIT 1)
+             ORDER BY m.id DESC LIMIT 1),
+            c.data->>'title'
         FROM changes c WHERE c.app = :app ORDER BY c.id DESC LIMIT 50
         """,
         app=app,
