@@ -42,6 +42,15 @@ MAGIC = {
 SHOT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
 
 
+def brief_of(report: str, limit: int = 2400) -> str:
+    """The coder's report, cut at a line break when it is long."""
+    report = report.strip()
+    if len(report) <= limit:
+        return report
+    cut = report.rfind("\n", 0, limit)
+    return report[: cut if cut > limit // 2 else limit].rstrip() + "\n\n…"
+
+
 def decode_shot(raw: object) -> tuple[bytes, str] | None:
     if not isinstance(raw, str):
         return None
@@ -380,7 +389,7 @@ class FramePage:
                 why = run.result[:300] or run.status.lower()
                 await self.db.write(store.fail_change, change_id, name, f"No change: {why}")
                 return
-            text = run.result[:600] or "Done."
+            text = brief_of(run.result) or "Done."
             if self.yard is not None:
                 await self.db.write(store.set_deploying, change_id)
                 async with asyncio.timeout(DEPLOY_TIMEOUT):
