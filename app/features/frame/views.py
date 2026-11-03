@@ -494,6 +494,8 @@ def render(
             h.Aside(
                 {"id": "sheet", "aria-label": "Nudge"},
                 data.class_("open", "$_sheet"),
+                # A drag writes the sheet's style and class; a repaint keeps them.
+                data.preserve_attr(["style", "class"]),
                 data.init("app.swipe.mount(el); app.frame.times(el)"),
                 data.on("swipe-close", "$_sheet = false"),
                 # Reading the chat reads its replies: the orb goes grey.

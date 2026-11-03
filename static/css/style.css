@@ -308,6 +308,7 @@ input, textarea { font-size: max(16px, 1em); }
 /* ---------- stage: the app, full screen ---------- */
 
 #frame { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--tint); }
+html:has(#frame), html:has(#frame) body { overflow: hidden; overscroll-behavior: none; }
 
 .stage {
   position: absolute;
@@ -520,10 +521,14 @@ input, textarea { font-size: max(16px, 1em); }
   border-top: var(--line) solid var(--ink);
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -10px 40px -20px oklch(0 0 0 / 0.5);
+  overflow: hidden;
+  overscroll-behavior: contain;
   transform: translateY(105%);
   transition: transform 0.45s var(--ease);
 }
 #sheet.open { transform: none; }
+/* Held by its header, the sheet follows the finger (app.swipe). */
+#sheet.held { transition: none; }
 #frame:has(.ink.on) #sheet,
 #frame:has(.ink.on) .scrim { visibility: hidden; }
 
@@ -567,6 +572,7 @@ input, textarea { font-size: max(16px, 1em); }
 .appswitch[aria-expanded="true"] .chev { rotate: 180deg; }
 
 /* The app list and the menu drop over the chat, under the header. */
+#sheet .drop { overscroll-behavior: contain; }
 #sheet .drop {
   position: absolute;
   top: 62px;
@@ -700,6 +706,8 @@ input, textarea { font-size: max(16px, 1em); }
 
 .timeline {
   flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 6px 18px var(--edge-bottom);
   list-style: none;
@@ -752,8 +760,12 @@ input, textarea { font-size: max(16px, 1em); }
 .inflight .what { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inflight .phase { flex: none; font-size: 0.76rem; color: var(--dim); }
 
+/* A flex child shrinks below its content only with min-height: 0; then it
+   scrolls itself, and its end does not pull the page (no pull-to-refresh). */
 #msgs {
   flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 14px 18px;
   list-style: none;
