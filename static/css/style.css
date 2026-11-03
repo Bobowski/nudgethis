@@ -309,13 +309,11 @@ input, textarea { font-size: max(16px, 1em); }
   border-left: 3px solid var(--accent);
   font-size: 0.92rem;
 }
-.composer .reply p {
+.composer .reply .md {
   flex: 1;
-  margin: 0;
-  max-height: 7.5em;
+  min-width: 0;
+  max-height: 9.5em;
   overflow-y: auto;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
 }
 .composer .reply .act.undo { margin: 0; flex: none; font-size: 0.8rem; padding: 2px 12px; }
 .composer .hint { margin: 2px 6px 8px; font-size: 0.82rem; color: var(--dim); }
@@ -540,6 +538,42 @@ input, textarea { font-size: max(16px, 1em); }
   display: block;
 }
 .msg.nudge { align-self: flex-start; padding-left: 12px; border-left: 3px solid var(--accent); }
+.msg.nudge p { white-space: normal; }
+
+/* Nudge's and the coder's markdown, drawn small and calm. */
+.md { overflow-wrap: break-word; }
+.md > * { margin: 0; }
+.md > * + * { margin-top: 0.55em; }
+.md h4 {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.md > * + h4 { margin-top: 0.9em; }
+.md ul, .md ol { padding-left: 1.2em; }
+.md li + li { margin-top: 0.3em; }
+.md ul li::marker { color: var(--accent); }
+.md ol li::marker { color: var(--dim); font-weight: 600; font-size: 0.9em; }
+.md strong { font-weight: 700; }
+.md code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.86em;
+  padding: 0.05em 0.35em;
+  border-radius: 5px;
+  background: var(--tint);
+  border: 1px solid var(--hairline);
+}
+.md pre {
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--tint);
+  border: 1px solid var(--hairline);
+}
+.md pre code { padding: 0; border: 0; background: none; font-size: 0.82rem; }
+.md a { text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
 
 .act.undo { margin-top: 8px; font-size: 0.82rem; }
 .step .act.undo { margin-top: 0; }

@@ -4,6 +4,7 @@ from stario.datastar.format import string_literal
 from stario.markup import HtmlElement, svg
 
 from app.coder.cursor import Model
+from app.common import markdown
 from app.common.shell import INK_LOOP, page
 from app.features.frame.data import Message
 from app.features.frame.urls import CODER, CODER_LIVE, FRAME_LIVE, SAY, UNDO
@@ -88,7 +89,7 @@ def message_li(m: Message, current: str) -> HtmlElement:
     return h.Li(
         {"class": "msg nudge"},
         tag,
-        h.P(m.text),
+        h.Div({"class": "md"}, *markdown.render(m.text)),
         undo_button(m.change_id, current) if "undo" in m.actions and m.change_id else None,
     )
 
@@ -108,7 +109,7 @@ def composer(name: str, docked: bool, reply: Message | None = None) -> HtmlEleme
         data.indicator("_sending"),
         h.Div(
             {"class": "reply"},
-            h.P(reply.text),
+            h.Div({"class": "md"}, *markdown.render(reply.text)),
             undo_button(reply.change_id, name)
             if "undo" in reply.actions and reply.change_id
             else None,
