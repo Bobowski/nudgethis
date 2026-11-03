@@ -411,6 +411,7 @@ def render(
                     "change_id": 0,
                     "coder_set": "",
                     "color": color,
+                    "snap": "",
                     "_rev": rev,
                     "_seen": 0,
                     "_sheet": False,
@@ -685,8 +686,9 @@ def render(
                     {"class": "sticker inkbar"},
                     data.on(
                         "submit",
-                        "!$_inkwait && ($shots = app.ink.take(), $_sheet = true, $_view = 'chat', "
-                        + at.post(SAY.href(name), include=["tab", "text", "shots"])
+                        "!$_inkwait && ($shots = app.ink.take(), $snap = app.ink.got,"
+                        " $_sheet = true, $_view = 'chat', "
+                        + at.post(SAY.href(name), include=["tab", "text", "shots", "snap"])
                         + ")",
                         prevent=True,
                     ),

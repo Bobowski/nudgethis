@@ -57,6 +57,18 @@ CODER_RULES = (
     " file names, commands, markdown, lists, or technical terms."
 )
 
+# Nudge's note while an app cannot send its picture: how to fix it when asked.
+SNAP_FIX = (
+    "Phone snaps: this app does not send nudgethis a picture of itself, so a drawing"
+    " made on a phone reaches you without the app under it. You offered to fix that."
+    " When the user agrees, call start_change with the title 'Phone screenshots' and"
+    " this brief: Copy static/js/nudge.js and static/js/screenshot.js, unchanged, from"
+    " the main branch of {template} into this app's static/js/. Load both on every"
+    ' page: in a Stario app, add "screenshot" and "nudge" to SCRIPTS in'
+    " app/assets.py; otherwise add a deferred script tag for each to the page shell,"
+    " screenshot.js first. Change nothing else."
+)
+
 # What the person sees when a change fails. The cause goes to the span.
 FAILED_START = "I couldn't start on that. Please try again in a moment."
 NO_FUNDS = (
@@ -262,6 +274,12 @@ class FramePage:
             names.append(fname)
         SSE(w).patch_signals({"text": "", "shots": []})
         await self.ask(c.app, c.span, name, url, text, names)
+        # A drawing on the live app on a phone: did the app send its picture?
+        snap = str(signals.get("snap", ""))
+        if snap == "none":
+            await self.db.write(store.set_snapless, name)
+        elif snap == "ok":
+            await self.db.write(store.clear_snapless, name)
 
     async def ask(
         self, app: App, span: Span, name: str, url: str, text: str, names: list[str]
@@ -324,6 +342,8 @@ class FramePage:
                     nudge_data.list_changes(self.db, name),
                 ),
             ]
+            if store.is_snapless(self.db, name):
+                instructions.append(SNAP_FIX.format(template=self.config.template))
             prior = history(store.history_rows(self.db, name, you_id, self.config.history), name)
             try:
                 async with asyncio.timeout(self.config.timeout):

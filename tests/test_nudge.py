@@ -193,3 +193,31 @@ async def test_each_app_has_its_own_conversation(spawn):
     text = repr(beta_turn[0]) + repr(beta_turn[1].instructions)
     assert "hello beta" in text
     assert "alpha secret" not in text
+
+
+async def test_a_phone_drawing_without_the_app_offers_the_fix_once(spawn):
+    captured = []
+    async with spawn(script(captured)) as client:
+        for _ in range(2):
+            r = await client.post(
+                SAY.href("alpha"),
+                json={"tab": "t1", "text": "this", "shots": [PNG], "snap": "none"},
+            )
+            assert r.status_code == 200
+            await client.drain_tasks()
+        page = (await client.get(FRAME.href("alpha"))).text
+        assert (
+            page.count("can&#x27;t send me a picture") + page.count("can't send me a picture") == 1
+        )
+        # Nudge knows how to fix it when the user says yes.
+        await say(client, "alpha", "yes please")
+        await client.drain_tasks()
+        assert "nudge.js" in repr(captured[-1][1].instructions)
+        # A drawing that comes with the app's picture clears it.
+        await client.post(
+            SAY.href("alpha"), json={"tab": "t1", "text": "ok", "shots": [PNG], "snap": "ok"}
+        )
+        await client.drain_tasks()
+        await say(client, "alpha", "and now")
+        await client.drain_tasks()
+        assert "nudge.js" not in repr(captured[-1][1].instructions)
