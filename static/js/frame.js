@@ -53,6 +53,12 @@ app.frame = {
     }, 700);
   },
 
+  // A mouse or a trackpad: the composer may take the focus. On a phone that
+  // would raise the keyboard, and with it up iOS scrolls the page, not the chat.
+  fine() {
+    return window.matchMedia("(pointer: fine)").matches;
+  },
+
   // The status line's clock: how long the step it names has taken.
   tick(el) {
     // The stream morphs the line in place: read its start on every tick.

@@ -883,6 +883,40 @@ html:has(#frame), html:has(#frame) body { overflow: hidden; overscroll-behavior:
 }
 @keyframes inkloop { to { stroke-dashoffset: -54; } }
 
+/* ---------- a chat picture, large ---------- */
+
+.lightbox {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  border: 0;
+  background: transparent;
+  display: none;
+  place-items: center;
+  cursor: zoom-out;
+}
+.lightbox[open] { display: grid; }
+.lightbox::backdrop { background: oklch(0.12 0.01 60 / 0.88); }
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+  border: var(--line) solid var(--st-paper);
+  box-shadow: 0 20px 60px -20px oklch(0 0 0 / 0.8);
+}
+.lightbox .close {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  color: var(--st-ink);
+  background: var(--st-paper);
+}
+.msg.you .thumbs a { cursor: zoom-in; }
+
 /* ---------- ink editor ---------- */
 
 .ink {
