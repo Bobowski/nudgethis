@@ -15,15 +15,19 @@ def get_change(db: LiteWriter, change_id: int) -> tuple | None:
     )
 
 
-def list_changes(db: LiteWriter) -> list[tuple]:
+def list_changes(db: LiteWriter, app: str) -> list[tuple]:
+    """The app's open changes and its last few: Nudge sees only the open app."""
     return db.query(
         """
         SELECT id, app, status, data->>'brief' AS brief FROM changes
-        WHERE status IN ('working', 'deploying')
-           OR id IN (SELECT id FROM changes WHERE status IN ('live', 'undone', 'dropped')
-                     ORDER BY id DESC LIMIT 5)
+        WHERE app = :app AND (
+            status IN ('working', 'deploying')
+            OR id IN (SELECT id FROM changes WHERE app = :app
+                      AND status IN ('live', 'undone', 'dropped')
+                      ORDER BY id DESC LIMIT 5))
         ORDER BY id
-        """
+        """,
+        app=app,
     )
 
 

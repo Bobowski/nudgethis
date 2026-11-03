@@ -5,12 +5,26 @@ from typing import Any, cast
 from litewriter import LiteWriter, Tx
 from stario.json import dumps, loads
 
-MESSAGES_SQL = """
-SELECT m.id, m.data, c.status
-FROM messages m
-LEFT JOIN changes c ON c.id = json_extract(m.data, '$.change_id')
-ORDER BY m.id DESC
-LIMIT 100
+# The frame's one source: the open app's messages (id >= 0), then for every
+# app what its coder is doing (-1), its newest reply (-2), and its colour (-3).
+# One watch on it wakes the stream for anything the frame shows.
+FRAME_SQL = """
+SELECT * FROM (
+    SELECT m.id, m.data, c.status
+    FROM messages m
+    LEFT JOIN changes c ON c.id = json_extract(m.data, '$.change_id')
+    WHERE m.app = :app
+    ORDER BY m.id DESC
+    LIMIT 100
+)
+UNION ALL
+SELECT -1, app, group_concat(DISTINCT status) FROM changes
+WHERE status IN ('working', 'deploying') GROUP BY app
+UNION ALL
+SELECT -2, app, max(id) FROM messages
+WHERE data->>'role' = 'nudge' AND data->>'thinking' IS NOT 1 GROUP BY app
+UNION ALL
+SELECT -3, app, data->>'color' FROM colors
 """
 
 MESSAGE_COLUMNS = {
@@ -22,6 +36,28 @@ CHANGE_COLUMNS = {
     "app": "TEXT AS (data->>'app')",
     "status": "TEXT AS (data->>'status')",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class Pulse:
+    """What the frame shows: the open app's messages, and a line on every app."""
+
+    messages: list[Message]
+    phases: dict[str, str]  # app -> working or deploying
+    latest: dict[str, int]  # app -> its newest reply's id
+    colors: dict[str, str]  # app -> colour name
+
+
+def pulse(rows: list[tuple]) -> Pulse:
+    messages = [message_row(*r) for r in rows if r[0] >= 0]
+    phases = {
+        r[1]: "deploying" if "deploying" in r[2].split(",") else "working"
+        for r in rows
+        if r[0] == -1
+    }
+    latest = {r[1]: int(r[2]) for r in rows if r[0] == -2}
+    colors = {r[1]: r[2] for r in rows if r[0] == -3}
+    return Pulse(list(reversed(messages)), phases, latest, colors)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +100,7 @@ def schema(tx: Tx) -> None:
         ("changes", CHANGE_COLUMNS),
         ("notes", {}),
         ("coders", {"app": "TEXT AS (data->>'app')"}),
+        ("colors", {"app": "TEXT AS (data->>'app')"}),
     ):
         tx.execute(
             f"CREATE TABLE IF NOT EXISTS {table} ("
@@ -77,6 +114,7 @@ def schema(tx: Tx) -> None:
     tx.execute("CREATE INDEX IF NOT EXISTS messages_at ON messages(at)")
     tx.execute("CREATE INDEX IF NOT EXISTS changes_app_status ON changes(app, status)")
     tx.execute("CREATE UNIQUE INDEX IF NOT EXISTS coders_app ON coders(app)")
+    tx.execute("CREATE UNIQUE INDEX IF NOT EXISTS colors_app ON colors(app)")
     # A fake job dies with the process, so its change is dropped. A Cursor run
     # goes on in the cloud: bootstrap follows it again. A reply left thinking
     # admits it was lost.
@@ -91,16 +129,18 @@ def schema(tx: Tx) -> None:
     )
 
 
-def history_rows(db: LiteWriter, before_id: int, limit: int) -> list[Message]:
+def history_rows(db: LiteWriter, app: str, before_id: int, limit: int) -> list[Message]:
+    """The app's own conversation before a message: each app has its own chat."""
     return list(
         reversed(
             db.query(
                 """
                 SELECT m.id, m.data, NULL FROM messages m
-                WHERE m.id < :before AND data->>'thinking' IS NOT 1
+                WHERE m.app = :app AND m.id < :before AND data->>'thinking' IS NOT 1
                 ORDER BY m.id DESC LIMIT :limit
                 """,
                 message_row,
+                app=app,
                 before=before_id,
                 limit=limit,
             )
@@ -108,16 +148,13 @@ def history_rows(db: LiteWriter, before_id: int, limit: int) -> list[Message]:
     )
 
 
-def get_phase(db: LiteWriter, app: str) -> str:
-    """What the coder does for the app now: deploying, working, or nothing."""
-    statuses = {
-        row[0]
-        for row in db.query(
-            "SELECT status FROM changes WHERE app = :app AND status IN ('working', 'deploying')",
-            app=app,
-        )
-    }
-    return next((s for s in ("deploying", "working") if s in statuses), "")
+def set_color(tx: Tx, app: str, color: str) -> None:
+    tx.execute("DELETE FROM colors WHERE app = :app", app=app)
+    tx.execute("INSERT INTO colors (data) VALUES (:data)", data=dumps({"app": app, "color": color}))
+
+
+def get_colors(db: LiteWriter) -> dict[str, str]:
+    return dict(db.query("SELECT app, data->>'color' FROM colors"))
 
 
 # The coder of one app: model id and params (JSON). No row means CURSOR_MODEL.

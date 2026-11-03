@@ -23,9 +23,10 @@ from stario.datastar import SSE, read_signals
 from app.coder import CoderError
 from app.coder.cursor import Cursor, Model
 from app.coder.yard import Yard
+from app.common.palette import COLORS
 from app.config import Config
 from app.features.frame import data as store
-from app.features.frame.urls import CODER, CODER_LIVE, FRAME, FRAME_LIVE, SAY, UNDO
+from app.features.frame.urls import CODER, CODER_LIVE, COLOR, FRAME, FRAME_LIVE, SAY, UNDO
 from app.features.frame.views import coder_panel, render
 from app.features.home import data as apps
 from app.nudge import agent as nudge
@@ -130,6 +131,7 @@ class FramePage:
         app.add(UNDO, self.undo_command)
         app.add(CODER, self.set_coder)
         app.add(CODER_LIVE, self.coder_live)
+        app.add(COLOR, self.set_color)
 
     def url_of(self, name: str) -> str | None:
         """An app from NUDGE_APPS, or one that nudgethis made and Yard deployed."""
@@ -137,6 +139,12 @@ class FramePage:
         return dict(self.config.apps).get(name) or (
             made[0] if made and made[1] == "ready" else None
         )
+
+    def app_names(self) -> list[str]:
+        """Every app the frame can open: NUDGE_APPS first, then the ones nudgethis made."""
+        names = [name for name, _ in self.config.apps]
+        made = [row[0] for row in self.db.query(apps.APPS_SQL) if row[2] == "ready"]
+        return names + [name for name in reversed(made) if name not in names]
 
     def coder_of(self, name: str) -> tuple[str, dict[str, str]]:
         """The app's own model and params, or CURSOR_MODEL; params checked against the model."""
@@ -160,16 +168,17 @@ class FramePage:
                     )
                 )
 
-    def pod(self, name: str, url: str, tab: str):
+    def pod(self, name: str, url: str, tab: str, pulse: store.Pulse | None = None):
+        pulse = pulse or store.pulse(self.db.query(store.FRAME_SQL, app=name))
         return render(
-            list(reversed(self.db.query(store.MESSAGES_SQL, store.message_row))),
+            pulse,
             name,
             url,
             store.list_timeline(self.db, name),
-            store.get_phase(self.db, name),
             store.live_rev(self.db, name),
             tab,
             self.coder(name),
+            self.app_names(),
         )
 
     async def show(self, c: Context, w: Writer) -> None:
@@ -191,20 +200,9 @@ class FramePage:
             w.text("tab must be a short id", status=400)
             return
         sse = SSE(w)
-        async with self.db.watch(store.MESSAGES_SQL, store.message_row) as rows:
-            async for messages in c.alive(rows):
-                sse.patch_elements(
-                    render(
-                        list(reversed(messages)),
-                        name,
-                        url,
-                        store.list_timeline(self.db, name),
-                        store.get_phase(self.db, name),
-                        store.live_rev(self.db, name),
-                        tab,
-                        self.coder(name),
-                    )
-                )
+        async with self.db.watch(store.FRAME_SQL, app=name) as rows:
+            async for found in c.alive(rows):
+                sse.patch_elements(self.pod(name, url, tab, store.pulse(found)))
                 sse.patch_signals({"_rev": store.live_rev(self.db, name)})
 
     async def say(self, c: Context, w: Writer) -> None:
@@ -302,10 +300,10 @@ class FramePage:
                     name,
                     url,
                     nudge_data.list_notes(self.db, name),
-                    nudge_data.list_changes(self.db),
+                    nudge_data.list_changes(self.db, name),
                 ),
             ]
-            prior = history(store.history_rows(self.db, you_id, self.config.history), name)
+            prior = history(store.history_rows(self.db, name, you_id, self.config.history), name)
             try:
                 async with asyncio.timeout(self.config.timeout):
                     result = await self.agent.run(
@@ -521,3 +519,15 @@ class FramePage:
         async with self.db.watch(store.CODER_SQL, app=name) as rows:
             async for _ in c.alive(rows):
                 sse.patch_elements(self.coder(name))
+
+    async def set_color(self, c: Context, w: Writer) -> None:
+        name = c.match.params["app"]
+        if self.url_of(name) is None:
+            w.text("no such app", status=404)
+            return
+        color = str((await read_signals(c.req)).get("color", ""))
+        if color not in COLORS:
+            w.text("no such colour", status=400)
+            return
+        w.empty()
+        await self.db.write(store.set_color, name, color)

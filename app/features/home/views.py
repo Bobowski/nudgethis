@@ -2,6 +2,7 @@ from stario import h
 from stario.datastar import at, data
 from stario.markup import HtmlElement
 
+from app.common.palette import accent
 from app.common.shell import INK_LOOP, page
 from app.features.auth.urls import LOGOUT
 from app.features.frame.urls import FRAME
@@ -9,7 +10,11 @@ from app.features.home.urls import HOME_LIVE, NEW_APP
 
 
 def render(
-    configured: tuple[tuple[str, str], ...], made: list[tuple], domain: str, can_make: bool
+    configured: tuple[tuple[str, str], ...],
+    made: list[tuple],
+    domain: str,
+    can_make: bool,
+    colors: dict[str, str],
 ) -> HtmlElement:
     return page(
         "nudgethis",
@@ -49,6 +54,7 @@ def render(
                 {"class": "apps"},
                 *[
                     h.Li(
+                        {"style": f"--dot: {accent(colors.get(name, ''))}"},
                         h.A({"href": FRAME.href(name)}, name.removeprefix("nudge-"))
                         if status == "ready"
                         else h.Span({"class": "name"}, name.removeprefix("nudge-")),
@@ -63,6 +69,7 @@ def render(
                 ],
                 *[
                     h.Li(
+                        {"style": f"--dot: {accent(colors.get(name, ''))}"},
                         h.A({"href": FRAME.href(name)}, name),
                         h.Span({"class": "appurl"}, url),
                     )

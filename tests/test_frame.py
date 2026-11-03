@@ -1,6 +1,6 @@
 import re
 
-from app.features.frame.urls import FRAME, FRAME_LIVE, SAY, UNDO
+from app.features.frame.urls import COLOR, FRAME, FRAME_LIVE, SAY, UNDO
 
 TAB = {"datastar": '{"tab": "t1"}'}
 PNG = (
@@ -168,3 +168,35 @@ async def test_the_panel_has_a_chat_composer_and_a_timeline(client):
     assert 'id="composer"' in page
     assert "#1 · Live" in page
     assert 'class="statusline"' not in page
+
+
+async def test_the_chat_shows_only_the_open_app(client):
+    await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "alpha only", "shots": []})
+    await client.drain_tasks()
+    assert "alpha only" in (await client.get(FRAME.href("alpha"))).text
+    assert "alpha only" not in (await client.get(FRAME.href("beta"))).text
+
+
+async def test_the_apps_panel_lists_every_app_and_its_work(client):
+    page = (await client.get(FRAME.href("alpha"))).text
+    assert 'id="apps"' in page
+    assert 'href="/a/alpha"' in page and 'href="/a/beta"' in page
+
+
+async def test_a_colour_paints_the_app_and_repaints_the_stream(client):
+    async with client.stream("GET", FRAME_LIVE.href("alpha"), params=TAB, timeout=2) as live:
+        events = live.iter_events()
+        await next_patch(events)
+        r = await client.post(COLOR.href("alpha"), json={"color": "blue"})
+        assert r.status_code == 204
+        html = await next_patch(events)
+        assert "--accent: oklch(0.55 0.19 262)" in html
+    page = (await client.get(FRAME.href("beta"))).text
+    assert "--accent: oklch(0.6 0.22 32)" in page  # beta keeps the default red
+
+
+async def test_a_bad_colour_is_400(client):
+    r = await client.post(COLOR.href("alpha"), json={"color": "#ff0000"})
+    assert r.status_code == 400
+    r = await client.post(COLOR.href("nope"), json={"color": "blue"})
+    assert r.status_code == 404
