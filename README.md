@@ -14,7 +14,7 @@ There is no review step. Every change goes to `main` and to production. "Undo" a
 
 ## Set it up on Yard
 
-nudgethis runs on a [Yard](https://stario.dev/yard) host and makes its apps there. Yard builds nudgethis without a Containerfile, because it is a [Stario](https://stario.dev) app.
+nudgethis runs on a [Yard](https://github.com/stariodev/yard) host and makes its apps there. Yard is a small self-hosted deploy tool. It runs on one Ubuntu VM, builds each `git push` into a container, and serves it over HTTPS through Caddy. Yard builds nudgethis without a Containerfile, because nudgethis is a [Stario](https://stario.dev) app. If you have no Yard host yet, start with [Set up a host](https://stario.dev/yard/install). It takes one script on a fresh VM.
 
 The examples use `nudge.example.com`. Use your own host.
 
