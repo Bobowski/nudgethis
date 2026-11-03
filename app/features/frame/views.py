@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from stario import h
 from stario.datastar import at, data
 from stario.datastar.format import string_literal
@@ -51,6 +53,33 @@ SEND_ICON = svg.Svg(
     {"viewBox": "0 0 24 24", "class": "icon", "aria-hidden": "true"},
     svg.Path({"d": "M12 19V5M6 11l6-6 6 6"}),
 )
+
+
+def span_text(seconds: float) -> str:
+    seconds = round(seconds)
+    if seconds < 60:
+        return f"{seconds} s"
+    return f"{seconds // 60} min {seconds % 60} s" if seconds % 60 else f"{seconds // 60} min"
+
+
+def took(asked: str | None, created: str | None, pushed: str | None, live: str | None) -> str:
+    """How long a live change took, and where the time went, in plain words."""
+    if not (live and created):
+        return ""
+    at = {
+        k: datetime.fromisoformat(v)
+        for k, v in (("asked", asked), ("created", created), ("pushed", pushed), ("live", live))
+        if v
+    }
+    parts = []
+    if "asked" in at:
+        parts.append(f"Nudge {span_text((at['created'] - at['asked']).total_seconds())}")
+    done = at.get("pushed", at["live"])
+    parts.append(f"coding {span_text((done - at['created']).total_seconds())}")
+    if "pushed" in at:
+        parts.append(f"going live {span_text((at['live'] - at['pushed']).total_seconds())}")
+    total = (at["live"] - at.get("asked", at["created"])).total_seconds()
+    return f"Took {span_text(total)}: " + ", ".join(parts)
 
 
 def undo_button(change_id: int, current: str) -> HtmlElement:
@@ -487,9 +516,14 @@ def render(
                                     {"class": "status"},
                                     f"#{cid} · {STATUS_LABELS.get(status, status)}",
                                 ),
+                                h.Span({"class": "took"}, spent)
+                                if (spent := took(asked, created, pushed, live))
+                                else None,
                                 undo_button(cid, name) if status == "live" else None,
                             )
-                            for cid, brief, status, updated in timeline
+                            for cid, brief, status, updated, asked, created, _, pushed, live in (
+                                timeline
+                            )
                         ]
                         or [h.Li({"class": "empty"}, "No changes yet.")]
                     ),

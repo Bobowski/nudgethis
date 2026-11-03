@@ -175,10 +175,18 @@ def set_coder(tx: Tx, app: str, model: str, params: dict[str, str]) -> None:
 
 
 def list_timeline(db: LiteWriter, app: str) -> list[tuple]:
-    """The changes of the app, newest first: id, brief, status, updated."""
+    """The changes of the app, newest first: id, brief, status, updated, and when
+    each step happened: asked (the person's message), created (Nudge handed it
+    on), ran (the coder started), pushed (the coder finished), live."""
     return db.query(
-        "SELECT id, data->>'brief', status, data->>'updated' FROM changes"
-        " WHERE app = :app ORDER BY id DESC LIMIT 50",
+        """
+        SELECT c.id, c.data->>'brief', c.status, c.data->>'updated',
+            (SELECT m.data->>'at' FROM messages m
+             WHERE json_extract(m.data, '$.change_id') = c.id AND m.data->>'role' = 'you'
+             ORDER BY m.id LIMIT 1),
+            c.data->>'created', c.data->>'ran', c.data->>'pushed', c.data->>'live'
+        FROM changes c WHERE c.app = :app ORDER BY c.id DESC LIMIT 50
+        """,
         app=app,
     )
 
@@ -240,18 +248,19 @@ def set_run(tx: Tx, change_id: int, agent_id: str, run_id: str, after: str) -> N
     """The Cursor run of a change, and the deploy that was newest when it began."""
     tx.execute(
         "UPDATE changes SET data = json_set(data, '$.agent_id', :agent, '$.run_id', :run,"
-        " '$.after', :after) WHERE id = :id",
+        " '$.after', :after, '$.ran', :now) WHERE id = :id",
         id=change_id,
         agent=agent_id,
         run=run_id,
         after=after,
+        now=_now(),
     )
 
 
 def set_deploying(tx: Tx, change_id: int) -> None:
     tx.execute(
-        "UPDATE changes SET data = json_set(data, '$.status', 'deploying', '$.updated', :now)"
-        " WHERE id = :id",
+        "UPDATE changes SET data = json_set(data, '$.status', 'deploying', '$.updated', :now,"
+        " '$.pushed', :now) WHERE id = :id",
         id=change_id,
         now=_now(),
     )
@@ -261,8 +270,8 @@ def go_live(tx: Tx, change_id: int, app: str, text: str) -> None:
     """The change is deployed. An undo offers no undo itself."""
     undoes = tx.value("SELECT data->>'undoes' FROM changes WHERE id = :id", id=change_id)
     tx.execute(
-        "UPDATE changes SET data = json_set(data, '$.status', 'live', '$.updated', :now)"
-        " WHERE id = :id",
+        "UPDATE changes SET data = json_set(data, '$.status', 'live', '$.updated', :now,"
+        " '$.live', :now) WHERE id = :id",
         id=change_id,
         now=_now(),
     )

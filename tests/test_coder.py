@@ -143,6 +143,7 @@ async def test_a_change_pushes_to_main_and_goes_live_after_the_deploy(cursor, tm
         page = (await client.get(FRAME.href("alpha"))).text
         assert "Did run-1." in page
         assert 'class="act undo"' in page
+        assert "Took 0 s: Nudge 0 s, coding 0 s, going live 0 s" in page
     assert statuses(tmp_path) == ["live"]
     (launch,) = remote.sent("POST", "https://api.cursor.com/v1/agents")
     assert launch["repos"] == [{"url": "https://github.com/Bobowski/alpha", "startingRef": "main"}]
