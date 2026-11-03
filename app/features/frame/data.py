@@ -102,6 +102,7 @@ def schema(tx: Tx) -> None:
         ("coders", {"app": "TEXT AS (data->>'app')"}),
         ("colors", {"app": "TEXT AS (data->>'app')"}),
         ("usage", {"app": "TEXT AS (data->>'app')"}),
+        ("snapless", {"app": "TEXT AS (data->>'app')"}),
     ):
         tx.execute(
             f"CREATE TABLE IF NOT EXISTS {table} ("
@@ -317,7 +318,7 @@ def busy(db: LiteWriter, app: str) -> bool:
 
 def remove_app(tx: Tx, app: str) -> None:
     """Everything the frame keeps about one app: its chat, changes, notes, colour, coder."""
-    for table in ("messages", "changes", "colors", "coders", "usage"):
+    for table in ("messages", "changes", "colors", "coders", "usage", "snapless"):
         tx.execute(f"DELETE FROM {table} WHERE app = :app", app=app)
     tx.execute("DELETE FROM notes WHERE data->>'app' = :app", app=app)
 
@@ -354,3 +355,27 @@ def list_usage(db: LiteWriter) -> list[tuple]:
         ORDER BY app
         """
     )
+
+
+# Said once, when a phone drawing came back without the app under it.
+SNAP_OFFER = (
+    "This app can't send me a picture of itself, so I only got your drawing."
+    " Want me to add that? It's a small change to the app."
+)
+
+
+def is_snapless(db: LiteWriter, app: str) -> bool:
+    """A phone drawing of the app came without its picture: it has no nudge.js."""
+    return bool(db.value("SELECT count(*) FROM snapless WHERE app = :app", app=app))
+
+
+def set_snapless(tx: Tx, app: str) -> None:
+    """Mark the app, and offer the fix in its chat, once."""
+    if tx.value("SELECT count(*) FROM snapless WHERE app = :app", app=app):
+        return
+    tx.execute("INSERT INTO snapless (data) VALUES (:data)", data=dumps({"app": app, "at": _now()}))
+    _add_message(tx, app, "nudge", SNAP_OFFER, None)
+
+
+def clear_snapless(tx: Tx, app: str) -> None:
+    tx.execute("DELETE FROM snapless WHERE app = :app", app=app)

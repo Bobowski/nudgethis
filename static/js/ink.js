@@ -5,6 +5,9 @@ window.app ??= {};
 // writes it onto the canvas. On a phone, live() opens the canvas clear over
 // the live app; the app's own picture of itself goes under the marks in take().
 app.ink = {
+  // What the last live snap got from the app: "ok", "none", or "" (not live).
+  got: "",
+
   mount(el) {
     this.el = el;
     this.canvas = el.querySelector("canvas");
@@ -130,6 +133,7 @@ app.ink = {
   take() {
     this.write();
     if (this.isLive) return this.takeLive();
+    this.got = "";
     const dpr = this.canvas.width / this.w;
     const scale = Math.min(1, 1600 / (Math.max(this.fw, this.fh) * dpr));
     const c = document.createElement("canvas");
@@ -148,6 +152,8 @@ app.ink = {
   // app's picture covers it whole, and the canvas goes on at its offset from
   // the frame. Both keep their aspect, so a mark lands where it was drawn.
   takeLive() {
+    // "ok": the app drew itself; "none": it did not answer (no nudge.js).
+    this.got = this.img ? "ok" : "none";
     const r = this.frameEl.getBoundingClientRect();
     const box = this.canvas.getBoundingClientRect();
     const dpr = this.canvas.width / this.w;
