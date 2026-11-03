@@ -53,12 +53,7 @@ app.ink = {
   live(frameEl, pic) {
     this.start(true);
     this.size();
-    const box = this.canvas.getBoundingClientRect();
-    const r = frameEl.getBoundingClientRect();
-    this.fx = Math.max(0, r.left - box.left);
-    this.fy = Math.max(0, r.top - box.top);
-    this.fw = Math.max(1, Math.min(r.width, this.w - this.fx));
-    this.fh = Math.max(1, Math.min(r.height, this.h - this.fy));
+    this.frameEl = frameEl;
     this.ready = true;
     this.redraw();
     const run = (this.run = {});
@@ -134,6 +129,7 @@ app.ink = {
   // The marked shot and the clean one, cropped to the image; the editor closes.
   take() {
     this.write();
+    if (this.isLive) return this.takeLive();
     const dpr = this.canvas.width / this.w;
     const scale = Math.min(1, 1600 / (Math.max(this.fw, this.fh) * dpr));
     const c = document.createElement("canvas");
@@ -142,22 +138,42 @@ app.ink = {
     const ctx = c.getContext("2d");
     const [x, y, w, h] = [this.fx, this.fy, this.fw, this.fh].map((v) => v * dpr);
     this.el.classList.remove("on");
-    if (this.isLive) {
-      // The marks go on the app's picture; with none, on the paper colour.
-      if (this.img) ctx.drawImage(this.img, 0, 0, c.width, c.height);
-      else {
-        ctx.fillStyle = getComputedStyle(this.el).getPropertyValue("--paper").trim() || "#fff";
-        ctx.fillRect(0, 0, c.width, c.height);
-      }
-      const clean = this.img ? c.toDataURL("image/png") : null;
-      ctx.drawImage(this.canvas, x, y, w, h, 0, 0, c.width, c.height);
-      const marked = c.toDataURL("image/png");
-      return clean ? [marked, clean] : [marked];
-    }
     ctx.drawImage(this.canvas, x, y, w, h, 0, 0, c.width, c.height);
     const marked = c.toDataURL("image/png");
     ctx.drawImage(this.img, 0, 0, c.width, c.height);
     return [marked, c.toDataURL("image/png")];
+  },
+
+  // Over the live app the shot is the frame, in the frame's own pixels: the
+  // app's picture covers it whole, and the canvas goes on at its offset from
+  // the frame. Both keep their aspect, so a mark lands where it was drawn.
+  takeLive() {
+    const r = this.frameEl.getBoundingClientRect();
+    const box = this.canvas.getBoundingClientRect();
+    const dpr = this.canvas.width / this.w;
+    const want = this.img ? this.img.width / r.width : dpr;
+    const s = Math.min(want, 1600 / Math.max(r.width, r.height));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(r.width * s));
+    c.height = Math.max(1, Math.round(r.height * s));
+    const ctx = c.getContext("2d");
+    this.el.classList.remove("on");
+    // The marks go on the app's picture; with none, on the paper colour.
+    if (this.img) ctx.drawImage(this.img, 0, 0, c.width, c.height);
+    else {
+      ctx.fillStyle = getComputedStyle(this.el).getPropertyValue("--paper").trim() || "#fff";
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    const clean = this.img ? c.toDataURL("image/png") : null;
+    ctx.drawImage(
+      this.canvas,
+      (box.left - r.left) * s,
+      (box.top - r.top) * s,
+      box.width * s,
+      box.height * s,
+    );
+    const marked = c.toDataURL("image/png");
+    return clean ? [marked, clean] : [marked];
   },
 
   down(e) {

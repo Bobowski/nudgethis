@@ -589,6 +589,9 @@ input, textarea { font-size: max(16px, 1em); }
 .ink.on { display: flex; }
 /* Drawing on the live app: a red frame says the screen is being marked. */
 .ink.live { background: transparent; }
+/* Over the live app the canvas covers the whole frame and the bar floats on
+   it, so the marks and the app's picture share one size. */
+.ink.live .inkbar { position: absolute; left: 0; right: 0; bottom: 0; }
 .ink.live .inkstage { box-shadow: inset 0 0 0 3px var(--accent); }
 .inkstage { position: relative; flex: 1; min-height: 0; }
 .inkcanvas {
