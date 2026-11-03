@@ -143,6 +143,7 @@ async def test_a_change_pushes_to_main_and_goes_live_after_the_deploy(cursor, tm
     assert launch["workOnCurrentBranch"] is True
     assert "autoCreatePR" not in launch
     assert launch["prompt"]["text"].startswith("make the title red")
+    assert "Do not use computer use" in launch["prompt"]["text"]
     assert [i["mimeType"] for i in launch["prompt"]["images"]] == ["image/png"]
 
 
@@ -159,6 +160,7 @@ async def test_undo_is_a_follow_up_run_that_goes_live(cursor, tmp_path):
     assert statuses(tmp_path) == ["undone", "live"]
     (follow_up,) = remote.sent("POST", "https://api.cursor.com/v1/agents/bc-1/runs")
     assert follow_up["prompt"]["text"].startswith("Revert the change you pushed to main")
+    assert "Do not use computer use" in follow_up["prompt"]["text"]
 
 
 async def test_a_failed_run_drops_the_change(cursor, tmp_path):

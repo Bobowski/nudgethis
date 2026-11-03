@@ -42,6 +42,15 @@ MAGIC = {
 SHOT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
 
 
+# Every run of the coder gets this: computer use is slow and costs a lot, and
+# `just check` and the app's tests are the proof a change works.
+CODER_RULES = (
+    " Do not use computer use, the desktop, a browser, or screenshots:"
+    " no computerUse tool or subagent, and no recording."
+    " Read the code and run `just check`; that is enough proof."
+)
+
+
 def brief_of(report: str, limit: int = 2400) -> str:
     """The coder's report, cut at a line break when it is long."""
     report = report.strip()
@@ -338,6 +347,7 @@ class FramePage:
                     else ""
                 )
                 + " Keep the change small, run `just check`, and push to main."
+                + CODER_RULES
             )
             cursor, repo = self.cursor, f"{self.config.repo_base}/{name}"
             model, params = self.coder_of(name)
@@ -428,7 +438,7 @@ class FramePage:
             text = (
                 "Revert the change you pushed to main in your last run, run `just check`,"
                 " and push the revert to main."
-            )
+            ) + CODER_RULES
             await self.launch(undo_id, name, span, lambda: cursor.follow_up(agent_id, text))
 
     async def undo_command(self, c: Context, w: Writer) -> None:
