@@ -2,7 +2,8 @@ window.app ??= {};
 // The ink editor: a snap fills the canvas, the tools draw on it, and take()
 // hands back the marked shot and the clean one. Text is typed in place: a
 // click with the text tool shows the input there, and Enter or a click away
-// writes it onto the canvas.
+// writes it onto the canvas. On a phone, live() opens the canvas clear over
+// the live app; the app's own picture of itself goes under the marks in take().
 app.ink = {
   mount(el) {
     this.el = el;
@@ -31,33 +32,81 @@ app.ink = {
   },
 
   open(src) {
-    this.ops = [];
-    this.draft = null;
-    this.hideText();
-    this.el.classList.add("on");
+    this.start(false);
     const img = new Image();
     img.onload = () => {
       this.img = img;
-      const dpr = window.devicePixelRatio || 1;
-      const box = this.canvas.getBoundingClientRect();
-      this.w = Math.max(1, box.width);
-      this.h = Math.max(1, box.height);
-      this.canvas.width = Math.round(this.w * dpr);
-      this.canvas.height = Math.round(this.h * dpr);
-      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.size();
       // Fit the shot inside the canvas without stretching it.
       const fit = Math.min(this.w / img.width, this.h / img.height);
       this.fw = img.width * fit;
       this.fh = img.height * fit;
       this.fx = (this.w - this.fw) / 2;
       this.fy = (this.h - this.fh) / 2;
-      this.color =
-        getComputedStyle(this.el).getPropertyValue("--accent").trim() ||
-        "rgb(212, 70, 30)";
-      this.tool("marker");
+      this.ready = true;
       this.redraw();
     };
     img.src = src;
+  },
+
+  // Draw over the live app in frameEl; pic resolves to its picture or null.
+  live(frameEl, pic) {
+    this.start(true);
+    this.size();
+    const box = this.canvas.getBoundingClientRect();
+    const r = frameEl.getBoundingClientRect();
+    this.fx = Math.max(0, r.left - box.left);
+    this.fy = Math.max(0, r.top - box.top);
+    this.fw = Math.max(1, Math.min(r.width, this.w - this.fx));
+    this.fh = Math.max(1, Math.min(r.height, this.h - this.fy));
+    this.ready = true;
+    this.redraw();
+    const run = (this.run = {});
+    this.wait(true);
+    pic.then((url) => {
+      if (this.run !== run) return;
+      if (!url) return this.wait(false);
+      const img = new Image();
+      img.onload = () => {
+        if (this.run !== run) return;
+        this.img = img;
+        this.wait(false);
+      };
+      img.onerror = () => this.run === run && this.wait(false);
+      img.src = url;
+    });
+  },
+
+  start(live) {
+    this.ops = [];
+    this.draft = null;
+    this.img = null;
+    this.ready = false;
+    this.isLive = live;
+    this.run = null;
+    this.wait(false);
+    this.hideText();
+    this.el.classList.toggle("live", live);
+    this.el.classList.add("on");
+    this.color =
+      getComputedStyle(this.el).getPropertyValue("--accent").trim() ||
+      "rgb(212, 70, 30)";
+    this.tool("marker");
+  },
+
+  size() {
+    const dpr = window.devicePixelRatio || 1;
+    const box = this.canvas.getBoundingClientRect();
+    this.w = Math.max(1, box.width);
+    this.h = Math.max(1, box.height);
+    this.canvas.width = Math.round(this.w * dpr);
+    this.canvas.height = Math.round(this.h * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  },
+
+  // Send stays off while the live app still draws its picture.
+  wait(on) {
+    this.el.dispatchEvent(new CustomEvent("ink-wait", { detail: on }));
   },
 
   tool(name) {
@@ -77,6 +126,8 @@ app.ink = {
 
   cancel() {
     this.hideText();
+    this.run = null;
+    this.wait(false);
     this.el.classList.remove("on");
   },
 
@@ -90,15 +141,27 @@ app.ink = {
     c.height = Math.max(1, Math.round(this.fh * dpr * scale));
     const ctx = c.getContext("2d");
     const [x, y, w, h] = [this.fx, this.fy, this.fw, this.fh].map((v) => v * dpr);
+    this.el.classList.remove("on");
+    if (this.isLive) {
+      // The marks go on the app's picture; with none, on the paper colour.
+      if (this.img) ctx.drawImage(this.img, 0, 0, c.width, c.height);
+      else {
+        ctx.fillStyle = getComputedStyle(this.el).getPropertyValue("--paper").trim() || "#fff";
+        ctx.fillRect(0, 0, c.width, c.height);
+      }
+      const clean = this.img ? c.toDataURL("image/png") : null;
+      ctx.drawImage(this.canvas, x, y, w, h, 0, 0, c.width, c.height);
+      const marked = c.toDataURL("image/png");
+      return clean ? [marked, clean] : [marked];
+    }
     ctx.drawImage(this.canvas, x, y, w, h, 0, 0, c.width, c.height);
     const marked = c.toDataURL("image/png");
     ctx.drawImage(this.img, 0, 0, c.width, c.height);
-    this.el.classList.remove("on");
     return [marked, c.toDataURL("image/png")];
   },
 
   down(e) {
-    if (!this.img) return;
+    if (!this.ready) return;
     const p = this.point(e);
     if (this.t === "text") {
       e.preventDefault();
@@ -164,7 +227,7 @@ app.ink = {
   redraw() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
-    ctx.drawImage(this.img, this.fx, this.fy, this.fw, this.fh);
+    if (!this.isLive) ctx.drawImage(this.img, this.fx, this.fy, this.fw, this.fh);
     for (const op of this.ops) this.draw(op);
     if (this.draft) this.draw(this.draft);
   },
