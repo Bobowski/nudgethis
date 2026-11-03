@@ -8,6 +8,7 @@ from litewriter import LiteWriter
 from stario import App, Context, Middleware, Span, Writer
 from stario.datastar import SSE, read_signals
 
+from app.builder import Builder
 from app.coder import CoderError, github
 from app.coder.yard import Yard
 from app.config import Config
@@ -56,12 +57,19 @@ FIRST_DEPLOY_TIMEOUT = 900
 @dataclass(frozen=True, slots=True)
 class HomePage:
     db: LiteWriter
-    config: Config
+    builder: Builder
     http: httpx.AsyncClient
-    yard: Yard | None
     signed_in: Middleware
     # The frame asks Nudge for a new app's first request: its description.
     first_request: Callable[[App, Span, str, str], Awaitable[None]]
+
+    @property
+    def config(self) -> Config:
+        return self.builder.config
+
+    @property
+    def yard(self) -> Yard | None:
+        return self.builder.yard
 
     def register(self, app: App) -> None:
         for route, handler in (

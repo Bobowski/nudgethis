@@ -20,6 +20,7 @@ from pydantic_ai.messages import (
 from stario import App, Context, Span, Writer
 from stario.datastar import SSE, read_signals
 
+from app.builder import Builder
 from app.coder import CoderError
 from app.coder.cursor import Cursor, Model
 from app.coder.yard import Yard
@@ -116,13 +117,33 @@ def history(messages: list[store.Message], open_app: str) -> list[ModelMessage]:
 @dataclass(frozen=True, slots=True)
 class FramePage:
     db: LiteWriter
-    config: Config
-    agent: Agent[TurnDeps, str]
-    model_name: str
+    builder: Builder
     instructions: str
-    cursor: Cursor | None
-    yard: Yard | None
-    models: tuple[Model, ...]
+
+    # The live parts come from the builder: the settings page changes them.
+    @property
+    def config(self) -> Config:
+        return self.builder.config
+
+    @property
+    def agent(self) -> Agent[TurnDeps, str]:
+        return self.builder.agent
+
+    @property
+    def model_name(self) -> str:
+        return self.builder.model_name
+
+    @property
+    def cursor(self) -> Cursor | None:
+        return self.builder.cursor
+
+    @property
+    def yard(self) -> Yard | None:
+        return self.builder.yard
+
+    @property
+    def models(self) -> tuple[Model, ...]:
+        return self.builder.models
 
     def register(self, app: App) -> None:
         app.add(FRAME, self.show)
@@ -322,6 +343,9 @@ class FramePage:
             output = str(result.output).strip() or "Done."
             await self.db.write(store.set_reply, placeholder_id, output, deps.change_id)
             usage = result.usage
+            await self.db.write(
+                store.add_usage, name, self.model_name, usage.input_tokens, usage.output_tokens
+            )
             span.attrs(
                 {
                     "nudge.model": self.model_name,

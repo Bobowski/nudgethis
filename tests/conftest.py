@@ -93,7 +93,7 @@ def spawn(tmp_path, monkeypatch):
             from app.nudge.agent import build_agent
 
             monkeypatch.setattr(
-                "app.main.build_agent",
+                "app.builder.build_agent",
                 lambda config: build_agent(config, model=FunctionModel(fn)),
             )
         return signed_in(TestClient(bootstrap, request_timeout=5))

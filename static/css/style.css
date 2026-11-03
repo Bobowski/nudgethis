@@ -252,6 +252,53 @@ input, textarea { font-size: max(16px, 1em); }
 .confirm .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .chip.danger { background: var(--accent); color: var(--on-accent); }
 
+.homehead nav { display: flex; gap: 6px; }
+
+/* ---------- settings: what the builder runs on ---------- */
+
+#settings { max-width: 40rem; margin: 0 auto; padding: max(2rem, env(safe-area-inset-top)) 1rem 4rem; }
+#settings .homehead { justify-content: flex-start; gap: 16px; }
+#settings h1 { margin: 0; font-size: 1.6rem; font-weight: 750; letter-spacing: -0.02em; }
+#settings .back { color: var(--dim); text-decoration: none; font-weight: 600; }
+#settings .section {
+  margin-top: 1.5rem;
+  padding: 18px 18px 16px;
+  border: var(--line) solid var(--ink);
+  border-radius: 18px;
+}
+#settings h2 { margin: 0; font-size: 1.05rem; font-weight: 750; }
+#settings .lead { margin: 2px 0 0; font-size: 0.86rem; }
+#settings .state { margin: 10px 0 4px; font-size: 0.82rem; font-weight: 600; color: var(--accent); }
+#settings .state.ok { color: var(--ink); }
+#settings .state.ok::before { content: "● "; color: oklch(0.62 0.15 150); }
+.field { display: grid; gap: 4px; margin-top: 14px; }
+.field .label { display: flex; align-items: baseline; gap: 8px; font-size: 0.82rem; font-weight: 700; }
+.field .src { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+.field .src.saved { color: var(--accent); }
+.field input, .field select {
+  width: 100%;
+  font-family: inherit;
+  color: inherit;
+  background: var(--field);
+  border: var(--line) solid transparent;
+  border-radius: 10px;
+  padding: 8px 10px;
+  outline: none;
+}
+.field input:focus, .field select:focus { border-color: var(--ink); }
+.field .help { font-size: 0.76rem; color: var(--dim); }
+.linkish { justify-self: start; padding: 0; border: 0; font-size: 0.76rem; font-weight: 600; color: var(--dim); text-decoration: underline; }
+#settings .save { margin-top: 16px; background: var(--ink); color: var(--paper); }
+.totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 10px; margin: 12px 0 6px; }
+.totals div { display: grid; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 12px; }
+.totals strong { font-size: 1.3rem; font-weight: 750; }
+.totals span { font-size: 0.76rem; }
+.usage table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 0.84rem; }
+.usage th, .usage td { padding: 7px 6px; text-align: left; border-bottom: 1px solid var(--hairline); white-space: nowrap; }
+.usage thead th { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.usage tbody th { font-weight: 650; }
+.usage { overflow-x: auto; }
+
 /* ---------- stage: the app, full screen ---------- */
 
 #frame { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--tint); }

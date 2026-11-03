@@ -12,6 +12,7 @@ from app.common.shell import INK_LOOP, page
 from app.features.frame.data import Message, Pulse
 from app.features.frame.urls import CODER, CODER_LIVE, COLOR, FRAME, FRAME_LIVE, SAY, UNDO
 from app.features.home.urls import HOME
+from app.features.settings.urls import SETTINGS
 from app.features.shots.urls import SHOT
 
 STATUS_LABELS = {
@@ -564,6 +565,7 @@ def render(
                         ),
                     ),
                     coder,
+                    h.A({"href": SETTINGS.href(), "class": "newlink"}, "All settings"),
                 ),
                 h.Div(
                     {"class": "tabs", "role": "tablist"},
