@@ -17,7 +17,14 @@ def page(title: str, body: HtmlElement) -> HtmlElement:
         {"lang": "en"},
         h.Head(
             h.Meta({"charset": "utf-8"}),
-            h.Meta({"name": "viewport", "content": "width=device-width, initial-scale=1"}),
+            # maximum-scale stops iOS zooming into a focused field and staying zoomed
+            # after the keyboard closes; pinch zoom still works on iOS.
+            h.Meta(
+                {
+                    "name": "viewport",
+                    "content": "width=device-width, initial-scale=1, maximum-scale=1",
+                }
+            ),
             h.Title(title),
             h.Link({"rel": "stylesheet", "href": STYLE_CSS}),
             *[h.Script({"src": src, "defer": True}) for src in SCRIPTS],
