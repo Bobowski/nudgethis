@@ -36,6 +36,23 @@ app.frame = {
     if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
   },
 
+  // The app reloads itself (nudge.js), so it stays on the page the person is
+  // on. An app without nudge.js does not answer: load its first page again.
+  reload() {
+    const win = this.el && this.el.contentWindow;
+    if (!win) return;
+    let heard = false;
+    const on = (e) => {
+      if (e.source === win && e.data && e.data.type === "nudge:reloading") heard = true;
+    };
+    window.addEventListener("message", on);
+    win.postMessage({ type: "nudge:reload" }, "*");
+    setTimeout(() => {
+      window.removeEventListener("message", on);
+      if (!heard) this.el.src = this.el.src;
+    }, 700);
+  },
+
   mark(el) {
     this.markEl = el;
   },
@@ -47,7 +64,7 @@ app.frame = {
     }
     if (v !== this.seen) {
       this.seen = v;
-      if (this.el) this.el.src = this.el.src;
+      this.reload();
       if (this.markEl) {
         this.markEl.classList.remove("play");
         void this.markEl.offsetWidth;

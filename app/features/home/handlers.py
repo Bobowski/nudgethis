@@ -52,7 +52,10 @@ class HomePage:
                 sse.patch_elements(self.page(made))
 
     async def new_app(self, c: Context, w: Writer) -> None:
-        label = str((await read_signals(c.req)).get("new_name", "")).strip().lower()
+        signals = await read_signals(c.req)
+        label = str(signals.get("new_name", "")).strip().lower()
+        start_from = str(signals.get("new_from", "")).strip()
+        source = github.source_of(start_from) if start_from else None
         sse = SSE(w)
         if self.yard is None:
             sse.patch_signals({"_toast": "Set YARD_TOKEN to make apps."})
@@ -60,18 +63,24 @@ class HomePage:
         if not NAME.fullmatch(label) or label in RESERVED:
             sse.patch_signals({"_toast": "A name is 2 to 30 lowercase letters, digits, or -."})
             return
+        if start_from and source is None:
+            sse.patch_signals(
+                {"_toast": "Start from a public GitHub repo: https://github.com/owner/name"}
+            )
+            return
         name = f"nudge-{label}"
         made = store.get_app(self.db, name)
         if name in dict(self.config.apps) or (made is not None and made[1] != "failed"):
             sse.patch_signals({"_toast": f"{label} exists."})
             return
-        sse.patch_signals({"new_name": ""})
+        sse.patch_signals({"new_name": "", "new_from": ""})
         url = f"https://{label}.{self.config.domain}"
         await self.db.write(store.add_app, name, url)
-        c.app.create_task(self.make(name, url, c.span.step("nudge.new_app")))
+        c.app.create_task(self.make(name, url, source, c.span.step("nudge.new_app")))
 
-    async def make(self, name: str, url: str, span: Span) -> None:
-        """A repo from the template, a Yard app whose site only nudgethis may frame, a deploy."""
+    async def make(self, name: str, url: str, source: str | None, span: Span) -> None:
+        """A repo from the template (or a public repo), a Yard app whose site only nudgethis
+        may frame, a deploy."""
         assert self.yard is not None
         yard, template = self.yard, self.config.template
         site = (
@@ -85,13 +94,23 @@ class HomePage:
             "}\n"
         )
         with span:
-            span.attrs({"app.name": name})
+            span.attrs({"app.name": name, "app.source": source or template})
             try:
+                files = None
+                if source is not None:
+                    # Read it first: a wrong URL fails before anything is made.
+                    await self.db.write(store.set_app, name, "creating", f"Reading {source}")
+                    files = await github.public_files(self.http, source)
                 await self.db.write(store.set_app, name, "creating", "Making the repo")
                 repo = await yard.create_repo(name)
                 await self.db.write(store.set_app, name, "creating", "Copying the template")
-                read, write = await yard.repo_token(template), await yard.repo_token(repo)
-                await github.copy_template(self.http, template, read, repo, write, name)
+                write = await yard.repo_token(repo)
+                if files is None:
+                    read = await yard.repo_token(template)
+                    files = await github.template_files(self.http, template, read, name)
+                await github.write_files(
+                    self.http, files, repo, write, name, source or github.full_name(template)
+                )
                 await self.db.write(store.set_app, name, "creating", "Starting it on Yard")
                 await yard.create_app(name, repo, site)
                 await self.db.write(store.set_app, name, "creating", "Deploying")
