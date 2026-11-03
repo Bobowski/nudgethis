@@ -47,6 +47,10 @@ def add_app(tx: Tx, name: str, url: str) -> None:
     )
 
 
+def remove_app(tx: Tx, name: str) -> None:
+    tx.execute("DELETE FROM apps WHERE name = :name", name=name)
+
+
 def set_app(tx: Tx, name: str, status: str, step: str) -> None:
     tx.execute(
         "UPDATE apps SET data = json_set(data, '$.status', :status, '$.step', :step)"

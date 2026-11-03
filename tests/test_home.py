@@ -109,7 +109,7 @@ async def test_new_app_makes_a_repo_copies_the_template_and_deploys(yard):
         await client.drain_tasks()
         home = (await client.get(HOME.href())).text
         assert 'href="/a/nudge-plants"' in home
-        assert "https://plants.wrati.dev" in home
+        assert "plants.wrati.dev" in home
         frame = await client.get(FRAME.href("nudge-plants"))
         assert frame.status_code == 200
         assert 'src="https://plants.wrati.dev"' in frame.text
@@ -262,7 +262,10 @@ async def test_a_new_app_can_start_from_a_public_repo(yard):
     async with yard(remote) as client:
         r = await client.post(
             NEW_APP.href(),
-            json={"new_name": "plants", "new_from": "https://github.com/someone/stario-blog.git"},
+            json={
+                "new_name": "plants",
+                "new_about": "My blog, from https://github.com/someone/stario-blog.git.",
+            },
         )
         assert r.status_code == 200
         await client.drain_tasks()
@@ -288,8 +291,10 @@ async def test_a_new_app_can_start_from_a_public_repo(yard):
 async def test_a_bad_start_from_url_gets_a_toast(yard):
     remote = Remote()
     async with yard(remote) as client:
-        for bad in ("http://github.com/a/b", "https://gitlab.com/a/b", "nudge-template"):
-            r = await client.post(NEW_APP.href(), json={"new_name": "blog", "new_from": bad})
+        for bad in ("http://github.com/a/b", "https://github.com/a", "https://github.com/a/b/c/d"):
+            r = await client.post(
+                NEW_APP.href(), json={"new_name": "blog", "new_about": f"start from {bad}"}
+            )
             assert "public GitHub repo" in r.text
     assert remote.sent("POST", f"{YARD}/api/v1/repos") == []
 
@@ -299,7 +304,7 @@ async def test_a_missing_public_repo_fails_before_making_anything(yard):
     async with yard(remote) as client:
         await client.post(
             NEW_APP.href(),
-            json={"new_name": "blog", "new_from": "https://github.com/someone/stario-blog"},
+            json={"new_name": "blog", "new_about": "https://github.com/someone/stario-blog"},
         )
         await client.drain_tasks()
         home = (await client.get(HOME.href())).text
@@ -323,5 +328,43 @@ async def test_the_description_is_the_new_apps_first_request(yard):
 async def test_the_home_page_offers_ideas_to_start_from(yard):
     async with yard(Remote()) as client:
         home = (await client.get(HOME.href())).text
-        assert "Describe your app" in home
+        assert "What do you want to make?" in home
         assert "Habit tracker" in home and "Meal planner" in home
+
+
+async def test_the_name_comes_from_the_prompt_and_the_suggestion_says_so(yard):
+    from app.features.home.urls import SUGGEST
+
+    remote = Remote()
+    async with yard(remote) as client:
+        r = await client.get(
+            SUGGEST.href(), params={"datastar": json.dumps({"new_about": "Plants I water weekly"})}
+        )
+        assert '"_hint":"plants-water"' in r.text and '"_from":""' in r.text
+        r = await client.get(
+            SUGGEST.href(),
+            params={
+                "datastar": json.dumps({"new_about": "https://github.com/someone/stario-blog"})
+            },
+        )
+        assert '"_from":"someone/stario-blog"' in r.text
+        # No name typed: the app is named from the prompt.
+        await client.post(NEW_APP.href(), json={"new_about": "Plants I water weekly"})
+        await client.drain_tasks()
+        home = (await client.get(HOME.href())).text
+        assert "nudge-plants-water" in home or "plants-water" in home
+
+
+async def test_an_app_can_be_removed_but_not_one_from_the_config(yard, tmp_path):
+    from app.features.home.urls import REMOVE_APP
+
+    async with yard(Remote(deploy="failed")) as client:
+        await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        await client.drain_tasks()
+        assert "plants" in (await client.get(HOME.href())).text
+        r = await client.post(REMOVE_APP.href(), json={"remove_name": "nudge-plants"})
+        assert r.status_code == 204
+        home = (await client.get(HOME.href())).text
+        assert "nudge-plants" not in home
+        r = await client.post(REMOVE_APP.href(), json={"remove_name": "alpha"})
+        assert r.status_code == 404
