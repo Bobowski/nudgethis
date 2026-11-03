@@ -73,7 +73,7 @@ async def main() -> int:
         return 1
     os.environ["PROJECT_DATA_DIR"] = tempfile.mkdtemp(prefix="nudgethis-smoke-")
     os.environ["NUDGE_FAKE_DELAY"] = "0"
-    os.environ.setdefault("NUDGE_APPS", "stario-site=https://stario.dev")
+    os.environ["NUDGE_APPS"] = "demo=https://example.com"
     # The real model only: a fake coder, and a mocked Google that signs in ADAM.
     os.environ["CURSOR_API_KEY"] = ""
     os.environ |= {
@@ -95,7 +95,7 @@ async def main() -> int:
         await login(client)
         for i, turn in enumerate(turns):
             started = time.monotonic()
-            r = await client.post("/a/stario-site/say", json={"tab": "s1", **turn})
+            r = await client.post("/a/demo/say", json={"tab": "s1", **turn})
             if r.status_code != 200:
                 print(f"turn {i + 1}: say failed with {r.status_code}")
                 return 1

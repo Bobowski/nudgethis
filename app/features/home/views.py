@@ -49,7 +49,7 @@ def render(
     configured: tuple[tuple[str, str], ...],
     made: list[tuple],
     domain: str,
-    can_make: bool,
+    missing: str,
     colors: dict[str, str],
 ) -> HtmlElement:
     return page(
@@ -136,8 +136,8 @@ def render(
                         "Make it",
                     ),
                 )
-                if can_make
-                else h.P({"class": "dim newfoot"}, "Set YARD_TOKEN to make apps."),
+                if not missing
+                else h.P({"class": "dim newfoot"}, missing),
             ),
             h.Ul(
                 {"class": "ideas", "aria-label": "ideas"},
@@ -157,7 +157,7 @@ def render(
                     for label, _, about in IDEAS
                 ],
             )
-            if can_make
+            if not missing
             else None,
             h.H2("Your apps") if made or configured else None,
             h.Ul(

@@ -3,6 +3,7 @@ name = "nudgethis"
 version = "0.1.0"
 description = "A frame around a live web app: snap it, draw on it, tell Nudge what to change"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.14"
 dependencies = [
     "cryptography>=44",

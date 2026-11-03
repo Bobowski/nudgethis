@@ -11,6 +11,7 @@ from tests.conftest import _env, signed_in, use_transport
 from tests.test_frame import PNG
 
 YARD = "https://yard.example"
+REPO = "https://github.com/someone/alpha"
 
 
 def variant(context: str, effort: str, fast: str, **flags) -> dict:
@@ -93,6 +94,8 @@ class Remote:
             return httpx.Response(200, json={"status": self.run, "result": f"Did {run_id}."})
         if url == "https://api.cursor.com/v1/models":
             return httpx.Response(200, json={"items": MODELS})
+        if url == f"{YARD}/api/v1/apps/alpha":
+            return httpx.Response(200, json={"app": {"name": "alpha", "repo": REPO}})
         if url == f"{YARD}/api/v1/apps/alpha/deploy":
             assert request.headers["authorization"] == "Bearer yard-token"
             status = "ok" if self.pushes == 0 else self.deploy
@@ -146,7 +149,7 @@ async def test_a_change_pushes_to_main_and_goes_live_after_the_deploy(cursor, tm
         assert "Took 0 s: Nudge 0 s, coding 0 s, going live 0 s" in page
     assert statuses(tmp_path) == ["live"]
     (launch,) = remote.sent("POST", "https://api.cursor.com/v1/agents")
-    assert launch["repos"] == [{"url": "https://github.com/Bobowski/alpha", "startingRef": "main"}]
+    assert launch["repos"] == [{"url": REPO, "startingRef": "main"}]
     assert launch["workOnCurrentBranch"] is True
     assert "autoCreatePR" not in launch
     assert launch["prompt"]["text"].startswith("make the title red")
@@ -179,6 +182,38 @@ async def test_a_failed_run_drops_the_change(cursor, tmp_path):
         page = (await client.get(FRAME.href("alpha"))).text
         assert "make that change this time" in page
         assert "Did run-1." not in page
+    assert statuses(tmp_path) == ["dropped"]
+
+
+async def test_an_app_yard_does_not_run_takes_its_repo_from_the_base(cursor, monkeypatch):
+    class Elsewhere(Remote):
+        def __call__(self, request):
+            if str(request.url) == f"{YARD}/api/v1/apps/alpha":
+                return httpx.Response(404)
+            return super().__call__(request)
+
+    monkeypatch.setenv("NUDGE_REPO_BASE", "https://github.com/base/")
+    remote = Elsewhere()
+    async with cursor(remote) as client:
+        await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
+        await client.drain_tasks()
+    (launch,) = remote.sent("POST", "https://api.cursor.com/v1/agents")
+    assert launch["repos"] == [{"url": "https://github.com/base/alpha", "startingRef": "main"}]
+
+
+async def test_an_app_with_no_repo_drops_the_change(cursor, tmp_path):
+    class Nowhere(Remote):
+        def __call__(self, request):
+            if str(request.url) == f"{YARD}/api/v1/apps/alpha":
+                return httpx.Response(404)
+            return super().__call__(request)
+
+    remote = Nowhere()
+    async with cursor(remote) as client:
+        await client.post(SAY.href("alpha"), json={"tab": "t1", "text": "make it red"})
+        await client.drain_tasks()
+        assert "start on that" in (await client.get(FRAME.href("alpha"))).text
+    assert remote.sent("POST", "https://api.cursor.com/v1/agents") == []
     assert statuses(tmp_path) == ["dropped"]
 
 

@@ -41,9 +41,15 @@ class Yard:
         """The newest deploy of the app: status (running, ok, failed, reverted), started, error."""
         return (await self.call("GET", f"/apps/{app}/deploy", missing_ok=True)).get("deploy", {})
 
-    async def create_repo(self, name: str) -> str:
-        """A private repo on the forge; its https URL."""
-        return (await self.call("POST", "/repos", {"name": name}))["repo"]
+    async def app_repo(self, app: str) -> str:
+        """The repo the app follows, or "" when Yard has no such app."""
+        found = await self.call("GET", f"/apps/{app}", missing_ok=True)
+        return str((found.get("app") or {}).get("repo") or "")
+
+    async def create_repo(self, name: str, owner: str = "") -> str:
+        """A private repo on the forge, under owner or Yard's one account; its https URL."""
+        body = {"name": name} | ({"owner": owner} if owner else {})
+        return (await self.call("POST", "/repos", body))["repo"]
 
     async def repo_token(self, repo: str) -> str:
         """A token that reads and writes one repo for an hour."""

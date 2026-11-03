@@ -39,6 +39,7 @@ SECTIONS = (
             ("yard_token", "Yard token", "From yard token new."),
             ("yard_url", "Yard address", "How nudgethis reaches Yard."),
             ("domain", "Domain", "A new app lives at name.this-domain."),
+            ("owner", "Repo owner", "The GitHub account of new repos, when Yard is on several."),
             ("template", "Template", "The repo a new app starts from."),
         ),
     ),
@@ -94,6 +95,7 @@ def render(
         "yard_token": config.yard_token,
         "yard_url": config.yard_url,
         "domain": config.domain,
+        "owner": config.owner,
         "template": config.template,
     }
     from_env = {
