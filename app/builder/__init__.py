@@ -4,6 +4,7 @@ agent, the coder (Cursor), and Yard. Settings change them without a restart."""
 import base64
 import dataclasses
 import hashlib
+import re
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 
@@ -28,6 +29,7 @@ KEYS = (
     "yard_url",
     "yard_token",
     "domain",
+    "owner",
     "template",
 )
 SECRETS = frozenset({"openai_api_key", "cursor_api_key", "yard_token"})
@@ -66,7 +68,9 @@ def check(key: str, value: str) -> str | None:
         except ValueError:
             return "A coder model is an id, or id:key=value,key=value."
     if key == "domain" and value and ("/" in value or " " in value):
-        return "A domain is a name like wrati.dev."
+        return "A domain is a name like example.com."
+    if key == "owner" and value and not re.fullmatch(r"[A-Za-z0-9-]{1,39}", value):
+        return "The owner is a GitHub account name."
     return None
 
 

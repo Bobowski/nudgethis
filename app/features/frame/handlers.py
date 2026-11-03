@@ -62,8 +62,9 @@ SNAP_FIX = (
     "Phone snaps: this app does not send nudgethis a picture of itself, so a drawing"
     " made on a phone reaches you without the app under it. You offered to fix that."
     " When the user agrees, call start_change with the title 'Phone screenshots' and"
-    " this brief: Copy static/js/nudge.js and static/js/screenshot.js, unchanged, from"
-    " the main branch of {template} into this app's static/js/. Load both on every"
+    " this brief: Copy static/js/nudge.js and static/js/screenshot.js from the main"
+    " branch of {template} into this app's static/js/. In nudge.js, put {origin} in"
+    " place of NUDGETHIS_ORIGIN; change nothing else in either file. Load both on every"
     ' page: in a Stario app, add "screenshot" and "nudge" to SCRIPTS in'
     " app/assets.py; otherwise add a deferred script tag for each to the page shell,"
     " screenshot.js first. Change nothing else."
@@ -343,7 +344,9 @@ class FramePage:
                 ),
             ]
             if store.is_snapless(self.db, name):
-                instructions.append(SNAP_FIX.format(template=self.config.template))
+                instructions.append(
+                    SNAP_FIX.format(template=self.config.template, origin=self.config.origin)
+                )
             prior = history(store.history_rows(self.db, name, you_id, self.config.history), name)
             try:
                 async with asyncio.timeout(self.config.timeout):
@@ -406,15 +409,25 @@ class FramePage:
                 + " Keep the change small, run `just check`, and push to main."
                 + CODER_RULES
             )
-            cursor, repo = self.cursor, f"{self.config.repo_base}/{name}"
+            cursor = self.cursor
             model, params = self.coder_of(name)
             span.attrs({"cursor.model": model, "cursor.params": str(params)})
-            await self.launch(
-                change_id,
-                name,
-                span,
-                lambda: cursor.start(repo, prompt, images, brief, model, params),
-            )
+
+            async def start() -> tuple[str, str]:
+                repo = await self.repo_of(name)
+                span.attrs({"app.repo": repo})
+                return await cursor.start(repo, prompt, images, brief, model, params)
+
+            await self.launch(change_id, name, span, start)
+
+    async def repo_of(self, name: str) -> str:
+        """The repo Yard deploys the app from, else <NUDGE_REPO_BASE>/<name>."""
+        repo = await self.yard.app_repo(name) if self.yard else ""
+        if not repo and self.config.repo_base:
+            repo = f"{self.config.repo_base}/{name}"
+        if not repo:
+            raise CoderError(f"no repo for {name}: not on Yard, and NUDGE_REPO_BASE is empty")
+        return repo
 
     async def fake(self, change_id: int, name: str, text: str) -> None:
         try:

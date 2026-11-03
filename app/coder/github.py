@@ -16,6 +16,13 @@ from app.coder import CoderError
 API = "https://api.github.com"
 # The files of the template that name the app `starter`.
 NAMED = ("pyproject.toml", "app/config.py", "uv.lock")
+# The template's nudge.js answers only the nudgethis whose address is put here.
+NUDGE_JS = "static/js/nudge.js"
+ORIGIN = "NUDGETHIS_ORIGIN"
+
+
+class NoRepo(CoderError):
+    """No public repo at that address: it is missing, or it is private."""
 
 
 async def call(http: httpx.AsyncClient, token: str, method: str, path: str, body=None) -> Any:
@@ -57,22 +64,33 @@ def source_of(url: str) -> str | None:
     return url if SOURCE.fullmatch(url) else None
 
 
-async def template_files(
-    http: httpx.AsyncClient, template: str, read: str, name: str
-) -> list[File]:
-    """The files of nudge-template, read with a Yard token, renamed from `starter`."""
-    src = full_name(template)
+async def private_files(http: httpx.AsyncClient, repo: str, read: str) -> list[File]:
+    """The files of a private repo's main branch, read with a Yard token."""
+    src = full_name(repo)
     tree = (await call(http, read, "GET", f"/repos/{src}/git/trees/main?recursive=1"))["tree"]
     files = []
     for item in tree:
         if item["type"] != "blob" or item["path"] == "README.md":
             continue
         blob = await call(http, read, "GET", f"/repos/{src}/git/blobs/{item['sha']}")
-        content = base64.b64decode(blob["content"])
-        if item["path"] in NAMED:
-            content = content.replace(b'"starter"', f'"{name}"'.encode())
-        files.append(File(item["path"], item["mode"], content))
+        files.append(File(item["path"], item["mode"], base64.b64decode(blob["content"])))
     return files
+
+
+def named(files: list[File], name: str, origin: str) -> list[File]:
+    """The template's files with the app's name in place of `starter`, and nudgethis's
+    address in nudge.js. The template's own LICENSE stays out: the new app is the maker's."""
+    out = []
+    for f in files:
+        if f.path == "LICENSE":
+            continue
+        content = f.content
+        if f.path in NAMED:
+            content = content.replace(b'"starter"', f'"{name}"'.encode())
+        if f.path == NUDGE_JS:
+            content = content.replace(ORIGIN.encode(), origin.encode())
+        out.append(File(f.path, f.mode, content))
+    return out
 
 
 def _untar(blob: bytes) -> list[File]:
@@ -107,7 +125,7 @@ async def public_files(http: httpx.AsyncClient, source: str) -> list[File]:
     except httpx.HTTPError as exc:
         raise CoderError(f"GitHub did not answer: {exc}") from exc
     if r.status_code == 404:
-        raise CoderError(f"no public repo at {source}")
+        raise NoRepo(f"no public repo at {source}")
     if r.status_code >= 400:
         raise CoderError(f"GitHub answered {r.status_code} for {source}")
     try:

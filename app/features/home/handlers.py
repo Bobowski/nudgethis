@@ -110,12 +110,20 @@ class HomePage:
             }
         )
 
+    def missing(self) -> str:
+        """What nudgethis needs before it can make apps, or ""."""
+        if self.yard is None:
+            return "Set YARD_TOKEN to make apps."
+        if not self.config.domain:
+            return "Set NUDGE_DOMAIN to make apps."
+        return ""
+
     def page(self, made: list[tuple]):
         return render(
             self.config.apps,
             made,
             self.config.domain,
-            self.yard is not None,
+            self.missing(),
             frame_store.get_colors(self.db),
         )
 
@@ -133,8 +141,8 @@ class HomePage:
         prompt = str(signals.get("new_about", "")).strip()
         typed = str(signals.get("new_name", "")).strip().lower()
         sse = SSE(w)
-        if self.yard is None:
-            sse.patch_signals({"_toast": "Set YARD_TOKEN to make apps."})
+        if missing := self.missing():
+            sse.patch_signals({"_toast": missing})
             return
         if len(prompt) > 2000:
             sse.patch_signals({"_toast": "Keep the description under 2000 characters."})
@@ -187,12 +195,17 @@ class HomePage:
                     await self.db.write(store.set_app, name, "creating", f"Reading {source}")
                     files = await github.public_files(self.http, source)
                 await self.db.write(store.set_app, name, "creating", "Making the repo")
-                repo = await yard.create_repo(name)
+                repo = await yard.create_repo(name, self.config.owner)
                 await self.db.write(store.set_app, name, "creating", "Copying the template")
                 write = await yard.repo_token(repo)
                 if files is None:
-                    read = await yard.repo_token(template)
-                    files = await github.template_files(self.http, template, read, name)
+                    try:
+                        files = await github.public_files(self.http, template)
+                    except github.NoRepo:
+                        # A private template: Yard's GitHub app reads it.
+                        read = await yard.repo_token(template)
+                        files = await github.private_files(self.http, template, read)
+                    files = github.named(files, name, self.config.origin)
                 await github.write_files(
                     self.http, files, repo, write, name, source or github.full_name(template)
                 )

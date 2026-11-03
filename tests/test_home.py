@@ -13,9 +13,11 @@ from app.main import bootstrap
 from tests.conftest import _env, signed_in, use_transport
 
 YARD = "https://yard.example"
-REPO = "https://github.com/Bobowski/nudge-plants"
-SRC = "https://api.github.com/repos/Bobowski/nudge-template"
-DST = "https://api.github.com/repos/Bobowski/nudge-plants"
+REPO = "https://github.com/someone/nudge-plants"
+SRC = "https://api.github.com/repos/stariodev/nudge-template"
+DST = "https://api.github.com/repos/someone/nudge-plants"
+TEMPLATE_TAR = "https://codeload.github.com/stariodev/nudge-template/tar.gz/HEAD"
+NUDGE_JS = b'origins: ["NUDGETHIS_ORIGIN", "http://localhost:8000"],'
 
 
 def b64(text: str) -> str:
@@ -25,9 +27,22 @@ def b64(text: str) -> str:
 class Remote:
     """Yard and GitHub, as one mock transport."""
 
-    def __init__(self, deploy="ok", tarball: bytes | None = None):
+    def __init__(self, deploy="ok", tarball: bytes | None = None, public_template=True):
         self.deploy = deploy
         self.tarball = tarball
+        self.template = (
+            tar_of(
+                {
+                    "README.md": b"# nudge-template",
+                    "LICENSE": b"MIT No Attribution",
+                    "pyproject.toml": b'[project]\nname = "starter"\n',
+                    "static/js/nudge.js": NUDGE_JS,
+                },
+                {".claude/skills/x": "../../.agents/skills/x"},
+            )
+            if public_template
+            else None
+        )
         self.calls: list[tuple[str, str, object, str]] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -61,6 +76,10 @@ class Remote:
                 "deploy": {"started": "t1", "status": self.deploy, "error": "boom"}
             },
         }
+        if url == TEMPLATE_TAR:
+            if self.template is None:
+                return httpx.Response(404)
+            return httpx.Response(200, content=self.template)
         if url == "https://codeload.github.com/someone/stario-blog/tar.gz/HEAD":
             if self.tarball is None:
                 return httpx.Response(404)
@@ -83,6 +102,7 @@ def yard(tmp_path, monkeypatch):
     _env(monkeypatch, tmp_path)
     monkeypatch.setenv("YARD_URL", YARD)
     monkeypatch.setenv("YARD_TOKEN", "yard-token")
+    monkeypatch.setenv("NUDGE_DOMAIN", "apps.example")
     monkeypatch.setattr("app.coder.yard.POLL", 0)
 
     def make(remote: Remote):
@@ -109,29 +129,68 @@ async def test_new_app_makes_a_repo_copies_the_template_and_deploys(yard):
         await client.drain_tasks()
         home = (await client.get(HOME.href())).text
         assert 'href="/a/nudge-plants"' in home
-        assert "plants.wrati.dev" in home
+        assert "plants.apps.example" in home
         frame = await client.get(FRAME.href("nudge-plants"))
         assert frame.status_code == 200
-        assert 'src="https://plants.wrati.dev"' in frame.text
-    blobs = remote.sent("POST", f"{DST}/git/blobs")
-    assert base64.b64decode(blobs[0]["content"]) == b'[project]\nname = "nudge-plants"\n'
+        assert 'src="https://plants.apps.example"' in frame.text
+    blobs = [base64.b64decode(b["content"]) for b in remote.sent("POST", f"{DST}/git/blobs")]
+    assert blobs[0] == b'[project]\nname = "nudge-plants"\n'
+    # The app answers this nudgethis only.
+    assert blobs[1] == b'origins: ["http://127.0.0.1:8000", "http://localhost:8000"],'
     (tree,) = remote.sent("POST", f"{DST}/git/trees")
     assert [(e["path"], e["mode"], e["sha"]) for e in tree["tree"]] == [
         ("pyproject.toml", "100644", "blob0"),
-        (".claude/skills/x", "120000", "blob1"),
+        ("static/js/nudge.js", "100644", "blob1"),
+        (".claude/skills/x", "120000", "blob2"),
         ("README.md", "100644", "readme"),
     ]
     assert remote.sent("PATCH", f"{DST}/git/refs/heads/main") == [{"sha": "c1"}]
     writes = {a for m, u, _, a in remote.calls if u.startswith(DST)}
     assert writes == {"Bearer token-nudge-plants"}
+    # The template is public: no token reads it.
+    tokens = [b["repo"] for b in remote.sent("POST", f"{YARD}/api/v1/repos/token")]
+    assert tokens == [REPO]
     assert remote.sent("POST", f"{YARD}/api/v1/apps") == [
         {"name": "nudge-plants", "repo": REPO, "ref": "main"}
     ]
     (site,) = remote.sent("PUT", f"{YARD}/api/v1/apps/nudge-plants/caddy")
-    assert site.startswith("plants.wrati.dev {")
+    assert site.startswith("plants.apps.example {")
     assert "header -X-Frame-Options" in site
     assert 'frame-ancestors http://127.0.0.1:8000"' in site
     assert "reverse_proxy nudge-plants-app-1:8000" in site
+
+
+async def test_a_private_template_is_read_with_a_yard_token(yard):
+    remote = Remote(public_template=False)
+    async with yard(remote) as client:
+        await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        await client.drain_tasks()
+        assert 'href="/a/nudge-plants"' in (await client.get(HOME.href())).text
+    blobs = [base64.b64decode(b["content"]) for b in remote.sent("POST", f"{DST}/git/blobs")]
+    assert blobs == [b'[project]\nname = "nudge-plants"\n', b"../../.agents/skills/x"]
+    reads = {a for m, u, _, a in remote.calls if u.startswith(SRC)}
+    assert reads == {"Bearer token-nudge-template"}
+
+
+async def test_the_owner_names_the_account_of_the_new_repo(yard, monkeypatch):
+    monkeypatch.setenv("NUDGE_OWNER", "my-apps")
+    remote = Remote()
+    async with yard(remote) as client:
+        await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        await client.drain_tasks()
+    assert remote.sent("POST", f"{YARD}/api/v1/repos") == [
+        {"name": "nudge-plants", "owner": "my-apps"}
+    ]
+
+
+async def test_without_a_domain_new_app_says_so(yard, monkeypatch):
+    monkeypatch.delenv("NUDGE_DOMAIN")
+    remote = Remote()
+    async with yard(remote) as client:
+        assert "Set NUDGE_DOMAIN to make apps." in (await client.get(HOME.href())).text
+        r = await client.post(NEW_APP.href(), json={"new_name": "plants"})
+        assert "Set NUDGE_DOMAIN to make apps." in r.text
+    assert remote.sent("POST", f"{YARD}/api/v1/repos") == []
 
 
 async def test_a_failed_first_deploy_marks_the_app_failed(yard, tmp_path):
@@ -236,7 +295,7 @@ async def test_an_unexpected_error_marks_the_app_failed(yard):
         assert "Making the repo" not in home
 
 
-def tarball(files: dict[str, bytes], links: dict[str, str] | None = None) -> bytes:
+def tar_of(files: dict[str, bytes], links: dict[str, str] | None = None) -> bytes:
     """A GitHub-style tarball: every path under one top folder."""
     out = io.BytesIO()
     with tarfile.open(fileobj=out, mode="w:gz") as tar:
@@ -254,7 +313,7 @@ def tarball(files: dict[str, bytes], links: dict[str, str] | None = None) -> byt
 
 async def test_a_new_app_can_start_from_a_public_repo(yard):
     remote = Remote(
-        tarball=tarball(
+        tarball=tar_of(
             {"README.md": b"theirs", "pyproject.toml": b"[project]\n", "run.sh": b"#!/bin/sh"},
             {"docs/link": "../README.md"},
         )
@@ -271,7 +330,7 @@ async def test_a_new_app_can_start_from_a_public_repo(yard):
         await client.drain_tasks()
         home = (await client.get(HOME.href())).text
         assert 'href="/a/nudge-plants"' in home
-    dst = "https://api.github.com/repos/Bobowski/nudge-plants"
+    dst = DST
     (tree,) = remote.sent("POST", f"{dst}/git/trees")
     assert [(e["path"], e["mode"]) for e in tree["tree"]] == [
         ("pyproject.toml", "100644"),
