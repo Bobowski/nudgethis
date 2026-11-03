@@ -543,6 +543,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: var(--tint);
 }
 .ink.on { display: flex; }
+.ink.live { background: transparent; }
 .inkstage { position: relative; flex: 1; min-height: 0; }
 .inkcanvas {
   position: absolute;

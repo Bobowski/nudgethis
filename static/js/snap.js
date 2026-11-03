@@ -19,7 +19,22 @@ app.snap = {
     }
   },
 
+  // A phone cannot capture the screen: draw on the live app instead, while
+  // the framed app sends a picture of itself (nudge-template's nudge.js).
+  phone() {
+    return (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getDisplayMedia ||
+      window.matchMedia("(pointer: coarse)").matches
+    );
+  },
+
   async go(hint) {
+    if (this.phone() && this.frameEl) {
+      hint("");
+      app.ink.live(this.frameEl, this.ask());
+      return;
+    }
     const url = await this.grab();
     if (url) {
       hint("");
@@ -30,6 +45,28 @@ app.snap = {
     } else {
       hint("Snaps are not available on this browser.");
     }
+  },
+
+  // The framed app's picture of its screen, or null when it does not answer.
+  ask() {
+    const win = this.frameEl.contentWindow;
+    const id = Math.random().toString(36).slice(2);
+    return new Promise((resolve) => {
+      const done = (url) => {
+        clearTimeout(timer);
+        window.removeEventListener("message", on);
+        resolve(url);
+      };
+      const on = (e) => {
+        const d = e.data;
+        if (e.source !== win || !d || d.type !== "nudge:snap" || d.id !== id) return;
+        done(typeof d.url === "string" && d.url.startsWith("data:image/") ? d.url : null);
+      };
+      const timer = setTimeout(() => done(null), 8000);
+      window.addEventListener("message", on);
+      if (win) win.postMessage({ type: "nudge:snap", id }, "*");
+      else done(null);
+    });
   },
 
   pick(evt) {

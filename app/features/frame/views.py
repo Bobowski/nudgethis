@@ -332,6 +332,7 @@ def render(
                     "_peek": False,
                     "_history": "",
                     "_hint": "",
+                    "_inkwait": False,
                 },
                 if_missing=True,
             ),
@@ -513,6 +514,7 @@ def render(
                 {"id": "ink", "class": "ink"},
                 data.ignore_morph(),
                 data.init("app.ink.mount(el)"),
+                data.on("ink-wait", "$_inkwait = evt.detail"),
                 h.Div(
                     {"class": "inkstage"},
                     h.Canvas({"class": "inkcanvas"}),
@@ -530,8 +532,9 @@ def render(
                     {"class": "glass inkbar"},
                     data.on(
                         "submit",
-                        "$shots = app.ink.take(); "
-                        + at.post(SAY.href(name), include=["tab", "text", "shots"]),
+                        "!$_inkwait && ($shots = app.ink.take(), "
+                        + at.post(SAY.href(name), include=["tab", "text", "shots"])
+                        + ")",
                         prevent=True,
                     ),
                     data.indicator("_sending"),
@@ -591,11 +594,12 @@ def render(
                                 "title": "Attach to the message",
                             },
                             data.on("click", "$shots = app.ink.take(); $_compose = true"),
+                            data.attr("disabled", "$_inkwait"),
                             ATTACH_ICON,
                         ),
                         h.Button(
                             {"type": "submit", "class": "round send", "aria-label": "Send"},
-                            data.attr("disabled", "$_sending"),
+                            data.attr("disabled", "$_sending || $_inkwait"),
                             SEND_ICON,
                         ),
                     ),
