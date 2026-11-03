@@ -211,3 +211,41 @@ async def test_the_chat_only_tells_and_links_to_the_timeline(client):
     timeline = page[page.index('class="timeline"') :]
     assert 'class="act undo"' in timeline
     assert "change it" in timeline  # the person's own words, not the coder's brief
+
+
+def test_work_in_progress_shows_one_short_line_at_the_top_of_the_chat():
+    from stario import h
+    from stario.markup import render as html
+
+    from app.features.frame.data import Pulse
+    from app.features.frame.views import render
+
+    row = (
+        7,
+        "Add a toggle in the header that flips the CSS custom properties...",
+        "working",
+        "2026-11-03T10:00:00+00:00",
+        None,
+        "2026-11-03T10:00:00+00:00",
+        None,
+        None,
+        None,
+        "can we have dark mode",
+        "On it.",
+        "Dark mode switch",
+    )
+    page = html(
+        render(
+            Pulse([], {"alpha": "working"}, {}, {}),
+            "alpha",
+            "https://a",
+            [row],
+            0,
+            "t1",
+            h.Div(),
+            ["alpha"],
+        )
+    )
+    top = page[page.index('class="inflight"') : page.index('id="msgs"')]
+    assert "Dark mode switch" in top and "in progress" in top
+    assert "CSS custom properties" not in top

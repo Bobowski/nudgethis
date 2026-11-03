@@ -579,6 +579,31 @@ input, textarea { font-size: max(16px, 1em); }
 .step.flash { animation: flash 1.6s var(--ease); }
 @keyframes flash { 0%, 40% { background: color-mix(in oklch, var(--accent) 16%, transparent); } }
 
+.inflight {
+  list-style: none;
+  margin: 0 18px 4px;
+  padding: 8px 12px;
+  border: var(--line) solid var(--ink);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.86rem;
+}
+.inflight li { display: flex; align-items: baseline; gap: 8px; }
+.inflight li::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  align-self: center;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+.inflight .what { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inflight .phase { flex: none; font-size: 0.76rem; color: var(--dim); }
+
 #msgs {
   flex: 1;
   margin: 0;

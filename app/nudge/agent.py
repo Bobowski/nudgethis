@@ -65,7 +65,8 @@ def _fake(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
                 texts = [c.strip() for c in content if isinstance(c, str) and c.strip()]
                 if texts:
                     brief = " ".join(texts)
-    return ModelResponse(parts=[ToolCallPart("start_change", {"brief": brief})])
+    title = brief if len(brief) <= 60 else brief[:59].rsplit(" ", 1)[0] + "…"
+    return ModelResponse(parts=[ToolCallPart("start_change", {"title": title, "brief": brief})])
 
 
 def build_agent(config: Config, *, model: Any = None) -> Agent[TurnDeps, str]:
@@ -90,8 +91,13 @@ def build_agent(config: Config, *, model: Any = None) -> Agent[TurnDeps, str]:
     )
 
     @agent.tool
-    async def start_change(ctx: RunContext[TurnDeps], brief: str) -> str:
-        """Start a change on the open app; a coder agent does the work."""
+    async def start_change(ctx: RunContext[TurnDeps], brief: str, title: str = "") -> str:
+        """Start a change on the open app; a coder agent does the work.
+
+        brief: the full, concrete instructions for the coder. Not shown.
+        title: what the person gets, in a few plain words they would use
+        ("Orange header on the meal plan"). It is shown to them.
+        """
         deps = ctx.deps
         deps.called.append("start_change")
         if deps.change_id is not None:
@@ -101,6 +107,7 @@ def build_agent(config: Config, *, model: Any = None) -> Agent[TurnDeps, str]:
             deps.app_name,
             brief.strip(),
             deps.you_message_id,
+            " ".join(title.split())[:80],
         )
         deps.change_id = change_id
         deps.start_ready(change_id, brief.strip())

@@ -518,6 +518,24 @@ def render(
                         )
                     ],
                 ),
+                # What is being worked on now, one plain line each.
+                h.Ul(
+                    {"class": "inflight", "aria-label": "in progress"},
+                    data.show("$_history === 'chat'"),
+                    *[
+                        h.Li(
+                            h.Span({"class": "what"}, clip(row[11] or row[9] or row[1], 70)),
+                            h.Span(
+                                {"class": "phase"},
+                                "going live" if row[2] == "deploying" else "in progress",
+                            ),
+                        )
+                        for row in reversed(timeline)
+                        if row[2] in ("working", "deploying")
+                    ],
+                )
+                if active
+                else None,
                 h.Ol(
                     {"id": "msgs"},
                     data.show("$_history === 'chat'"),
@@ -553,8 +571,9 @@ def render(
                                     STATUS_LABELS.get(status, status),
                                     h.Span({"class": "when"}, when_text(updated)),
                                 ),
-                                # In the person's own words; the coder's brief is for the coder.
-                                h.P({"class": "brief"}, clip(request or brief, 140)),
+                                # Nudge's short title, else the person's own words; the
+                                # coder's brief is for the coder.
+                                h.P({"class": "brief"}, clip(title or request or brief, 140)),
                                 h.P({"class": "result"}, clip(result, 280))
                                 if result and status in ("live", "undone", "dropped")
                                 else None,
@@ -575,6 +594,7 @@ def render(
                                 live,
                                 request,
                                 result,
+                                title,
                             ) in timeline
                         ]
                         or [h.Li({"class": "empty"}, "No changes yet.")]

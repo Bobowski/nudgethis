@@ -39,7 +39,7 @@ def list_notes(db: LiteWriter, app: str) -> list[tuple]:
     )
 
 
-def start_change(tx: Tx, app: str, brief: str, you_message_id: int) -> int:
+def start_change(tx: Tx, app: str, brief: str, you_message_id: int, title: str = "") -> int:
     now = _now()
     change_id = tx.value(
         "INSERT INTO changes (data) VALUES (:data) RETURNING id",
@@ -47,6 +47,7 @@ def start_change(tx: Tx, app: str, brief: str, you_message_id: int) -> int:
             {
                 "app": app,
                 "brief": brief,
+                "title": title,
                 "status": "working",
                 "created": now,
                 "updated": now,
