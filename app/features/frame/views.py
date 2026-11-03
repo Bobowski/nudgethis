@@ -15,11 +15,17 @@ from app.features.home.urls import HOME
 from app.features.shots.urls import SHOT
 
 STATUS_LABELS = {
-    "working": "Working",
-    "deploying": "Deploying",
-    "live": "Live",
+    "working": "In progress",
+    "deploying": "Going live",
+    "live": "Done",
     "undone": "Undone",
-    "dropped": "Failed",
+    "dropped": "Didn't work",
+}
+# The chat's one status line while work goes on, by what is happening.
+DOING = {
+    "thinking": "Thinking…",
+    "working": "Making the change…",
+    "deploying": "Putting it live…",
 }
 
 
@@ -82,6 +88,20 @@ def took(asked: str | None, created: str | None, pushed: str | None, live: str |
     return f"Took {span_text(total)}: " + ", ".join(parts)
 
 
+def clip(text: str | None, most: int) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= most else text[: most - 1].rsplit(" ", 1)[0] + "…"
+
+
+def when_text(stamp: str | None) -> HtmlElement | str:
+    """The day and the hour, as a person says it. The server's is UTC; the
+    browser rewrites it in the viewer's own time zone (app.frame.times)."""
+    if not stamp:
+        return ""
+    at = datetime.fromisoformat(stamp)
+    return h.Time({"datetime": stamp}, at.strftime("%-d %b, %H:%M"))
+
+
 def undo_button(change_id: int, current: str) -> HtmlElement:
     return h.Button(
         {"type": "button", "class": "act undo"},
@@ -94,10 +114,10 @@ def undo_button(change_id: int, current: str) -> HtmlElement:
     )
 
 
-def message_li(m: Message, current: str) -> HtmlElement:
+def message_li(m: Message, current: str) -> HtmlElement | None:
     tag = h.Span({"class": "tag"}, m.app) if m.app != current else None
     if m.thinking:
-        return h.Li({"class": "working"}, tag, INK_LOOP)
+        return None  # the status line at the end of the chat says it
     if m.role == "you":
         return h.Li(
             {"class": "msg you"},
@@ -116,11 +136,19 @@ def message_li(m: Message, current: str) -> HtmlElement:
             if m.shots
             else None,
         )
+    # The chat only tells; the change's details and its Undo are in the Timeline.
     return h.Li(
         {"class": "msg nudge"},
         tag,
         h.Div({"class": "md"}, *markdown.render(m.text)),
-        undo_button(m.change_id, current) if "undo" in m.actions and m.change_id else None,
+        h.Button(
+            {"type": "button", "class": "details"},
+            data.on("click", f"$_history = 'timeline'; app.frame.show('step-{m.change_id}')"),
+            "Details",
+        )
+        # A change's outcome (live, or it did not work), not Nudge's "On it."
+        if m.change_id and ("details" in m.actions or "undo" in m.actions)
+        else None,
     )
 
 
@@ -358,14 +386,16 @@ def render(
         state, label = "busy", phase.capitalize()
     else:
         state, label = "idle", name
+    # One dim line at the end of the chat while Nudge or the coder works, with
+    # a clock from when that step began.
+    thinking = next((m for m in here if m.thinking), None)
     active = next((row for row in timeline if row[2] in ("working", "deploying")), None)
-    if any(m.thinking for m in here):
-        doing = "Nudge is thinking."
+    if thinking:
+        doing, since = DOING["thinking"], thinking.at
     elif active:
-        verb = "Deploying" if active[2] == "deploying" else "The coder is working on"
-        doing = f"{verb} #{active[0]}: {active[1]}"
+        doing, since = DOING[active[2]], active[3] or ""
     else:
-        doing = ""
+        doing, since = "", ""
     latest_id = pulse.latest.get(name, 0)
     unread = f"$_seen < {latest_id}"
     seen_key = string_literal(f"seen.{name}")
@@ -459,7 +489,7 @@ def render(
             h.Aside(
                 {"id": "history"},
                 data.class_("open", "$_history !== ''"),
-                data.init("app.swipe.mount(el)"),
+                data.init("app.swipe.mount(el); app.frame.times(el)"),
                 data.on("swipe-close", "$_history = ''"),
                 h.Header(
                     {"class": "histhead"},
@@ -488,7 +518,6 @@ def render(
                         )
                     ],
                 ),
-                h.P({"class": "statusline", "role": "status"}, INK_LOOP, doing) if doing else None,
                 h.Ol(
                     {"id": "msgs"},
                     data.show("$_history === 'chat'"),
@@ -502,6 +531,15 @@ def render(
                             )
                         ]
                     ),
+                    h.Li(
+                        {"class": "doing", "role": "status", "data-since": since},
+                        data.init("app.frame.tick(el)"),
+                        INK_LOOP,
+                        h.Span(doing),
+                        h.Span({"class": "clock"}),
+                    )
+                    if doing
+                    else None,
                 ),
                 h.Ol(
                     {"class": "timeline"},
@@ -509,21 +547,35 @@ def render(
                     *(
                         [
                             h.Li(
-                                {"class": f"step {status}"},
-                                h.Span({"class": "when"}, (updated or "")[:16].replace("T", " ")),
-                                h.P({"class": "brief"}, brief),
+                                {"class": f"step {status}", "id": f"step-{cid}"},
                                 h.Span(
                                     {"class": "status"},
-                                    f"#{cid} · {STATUS_LABELS.get(status, status)}",
+                                    STATUS_LABELS.get(status, status),
+                                    h.Span({"class": "when"}, when_text(updated)),
                                 ),
+                                # In the person's own words; the coder's brief is for the coder.
+                                h.P({"class": "brief"}, clip(request or brief, 140)),
+                                h.P({"class": "result"}, clip(result, 280))
+                                if result and status in ("live", "undone", "dropped")
+                                else None,
                                 h.Span({"class": "took"}, spent)
                                 if (spent := took(asked, created, pushed, live))
                                 else None,
                                 undo_button(cid, name) if status == "live" else None,
                             )
-                            for cid, brief, status, updated, asked, created, _, pushed, live in (
-                                timeline
-                            )
+                            for (
+                                cid,
+                                brief,
+                                status,
+                                updated,
+                                asked,
+                                created,
+                                _,
+                                pushed,
+                                live,
+                                request,
+                                result,
+                            ) in timeline
                         ]
                         or [h.Li({"class": "empty"}, "No changes yet.")]
                     ),
@@ -586,7 +638,7 @@ def render(
                             "aria-label": "Nudge: tap, pull, swipe, or hold",
                         },
                         data.preserve_attr(["style", "class"]),
-                        data.show("!$_compose"),
+                        data.show("!$_compose && $_history === '' && !$_apps"),
                         data.init("app.pill.mount(el)"),
                         h.Span(
                             {"class": "orb"},

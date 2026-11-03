@@ -1,5 +1,6 @@
 import asyncio
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import httpx
@@ -28,6 +29,8 @@ class HomePage:
     http: httpx.AsyncClient
     yard: Yard | None
     signed_in: Middleware
+    # The frame asks Nudge for a new app's first request: its description.
+    first_request: Callable[[App, Span, str, str], Awaitable[None]]
 
     def register(self, app: App) -> None:
         for route, handler in ((HOME, self.show), (HOME_LIVE, self.live), (NEW_APP, self.new_app)):
@@ -55,6 +58,7 @@ class HomePage:
         signals = await read_signals(c.req)
         label = str(signals.get("new_name", "")).strip().lower()
         start_from = str(signals.get("new_from", "")).strip()
+        about = str(signals.get("new_about", "")).strip()
         source = github.source_of(start_from) if start_from else None
         sse = SSE(w)
         if self.yard is None:
@@ -62,6 +66,9 @@ class HomePage:
             return
         if not NAME.fullmatch(label) or label in RESERVED:
             sse.patch_signals({"_toast": "A name is 2 to 30 lowercase letters, digits, or -."})
+            return
+        if len(about) > 2000:
+            sse.patch_signals({"_toast": "Keep the description under 2000 characters."})
             return
         if start_from and source is None:
             sse.patch_signals(
@@ -73,12 +80,14 @@ class HomePage:
         if name in dict(self.config.apps) or (made is not None and made[1] != "failed"):
             sse.patch_signals({"_toast": f"{label} exists."})
             return
-        sse.patch_signals({"new_name": "", "new_from": ""})
+        sse.patch_signals({"new_name": "", "new_from": "", "new_about": ""})
         url = f"https://{label}.{self.config.domain}"
         await self.db.write(store.add_app, name, url)
-        c.app.create_task(self.make(name, url, source, c.span.step("nudge.new_app")))
+        c.app.create_task(self.make(c.app, name, url, source, about, c.span.step("nudge.new_app")))
 
-    async def make(self, name: str, url: str, source: str | None, span: Span) -> None:
+    async def make(
+        self, app: App, name: str, url: str, source: str | None, about: str, span: Span
+    ) -> None:
         """A repo from the template (or a public repo), a Yard app whose site only nudgethis
         may frame, a deploy."""
         assert self.yard is not None
@@ -131,3 +140,6 @@ class HomePage:
                 span.fail(why)
                 return
             await self.db.write(store.set_app, name, "ready", "")
+            if about:
+                # The description is the app's first request, in its own chat.
+                await self.first_request(app, span, name, about)

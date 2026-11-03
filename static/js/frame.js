@@ -53,6 +53,57 @@ app.frame = {
     }, 700);
   },
 
+  // The status line's clock: how long the step it names has taken.
+  tick(el) {
+    // The stream morphs the line in place: read its start on every tick.
+    const draw = () => {
+      if (!el.isConnected) return clearInterval(timer);
+      const clock = el.querySelector(".clock");
+      const since = Date.parse(el.dataset.since || "");
+      if (!clock || Number.isNaN(since)) return;
+      const s = Math.max(0, Math.round((Date.now() - since) / 1000));
+      clock.textContent = s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    };
+    const timer = setInterval(draw, 1000);
+    draw();
+  },
+
+  // Times come as UTC; show each in the viewer's zone, again after each morph.
+  times(root) {
+    const fmt = new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const local = () => {
+      for (const t of root.querySelectorAll("time[datetime]")) {
+        const at = new Date(t.getAttribute("datetime"));
+        if (Number.isNaN(at.getTime())) continue;
+        const text = fmt.format(at);
+        if (t.textContent !== text) t.textContent = text;
+      }
+    };
+    new MutationObserver(local).observe(root, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    local();
+  },
+
+  // Scroll the Timeline to one change and flash it.
+  show(id) {
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.remove("flash");
+      void el.offsetWidth;
+      el.classList.add("flash");
+    }, 60);
+  },
+
   mark(el) {
     this.markEl = el;
   },

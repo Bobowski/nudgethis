@@ -51,9 +51,9 @@ CODER_RULES = (
     " Work fast: test only what the change touches, and run `just check` once;"
     " that is enough proof."
     " Your last message is shown as it is to the person who asked, who may not"
-    " be technical. Make it only one to three short sentences in plain words"
-    " about what they will see change in the app. No code, file names,"
-    " commands, markdown, or technical terms."
+    " be technical. Write it like a text message: one short sentence, two at"
+    " most, in plain words, about what they will now see in the app. No code,"
+    " file names, commands, markdown, lists, or technical terms."
 )
 
 # What the person sees when a change fails. The cause goes to the span.
@@ -240,30 +240,30 @@ class FramePage:
             (self.config.shots_dir / fname).write_bytes(blob)
             names.append(fname)
         SSE(w).patch_signals({"text": "", "shots": []})
+        await self.ask(c.app, c.span, name, url, text, names)
+
+    async def ask(
+        self, app: App, span: Span, name: str, url: str, text: str, names: list[str]
+    ) -> None:
+        """The person's request goes into the app's chat, and Nudge takes its turn."""
         you_id, placeholder_id = await self.db.write(store.add_request, name, text, names)
-        step = c.span.step("nudge.turn")
+        step = span.step("nudge.turn")
 
         def start_ready(change_id: int, brief: str) -> None:
-            c.app.create_task(
-                self.code(change_id, name, url, brief, names, step.step("nudge.code"))
-            )
+            app.create_task(self.code(change_id, name, url, brief, names, step.step("nudge.code")))
 
         async def undo(change_id: int) -> str:
-            return await self.start_undo(c.app, change_id, name, step)
+            return await self.start_undo(app, change_id, name, step)
 
-        c.app.create_task(
-            self.turn(
-                name,
-                url,
-                you_id,
-                placeholder_id,
-                text,
-                names,
-                start_ready,
-                undo,
-                step,
-            )
+        app.create_task(
+            self.turn(name, url, you_id, placeholder_id, text, names, start_ready, undo, step)
         )
+
+    async def first_request(self, app: App, span: Span, name: str, text: str) -> None:
+        """A new app's description, asked as its first request once it is live."""
+        url = self.url_of(name)
+        if url is not None:
+            await self.ask(app, span, name, url, text, [])
 
     async def turn(
         self,

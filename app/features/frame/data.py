@@ -177,14 +177,21 @@ def set_coder(tx: Tx, app: str, model: str, params: dict[str, str]) -> None:
 def list_timeline(db: LiteWriter, app: str) -> list[tuple]:
     """The changes of the app, newest first: id, brief, status, updated, and when
     each step happened: asked (the person's message), created (Nudge handed it
-    on), ran (the coder started), pushed (the coder finished), live."""
+    on), ran (the coder started), pushed (the coder finished), live; then what
+    the person asked, and the last reply about it."""
     return db.query(
         """
         SELECT c.id, c.data->>'brief', c.status, c.data->>'updated',
             (SELECT m.data->>'at' FROM messages m
              WHERE json_extract(m.data, '$.change_id') = c.id AND m.data->>'role' = 'you'
              ORDER BY m.id LIMIT 1),
-            c.data->>'created', c.data->>'ran', c.data->>'pushed', c.data->>'live'
+            c.data->>'created', c.data->>'ran', c.data->>'pushed', c.data->>'live',
+            (SELECT m.data->>'text' FROM messages m
+             WHERE json_extract(m.data, '$.change_id') = c.id AND m.data->>'role' = 'you'
+             ORDER BY m.id LIMIT 1),
+            (SELECT m.data->>'text' FROM messages m
+             WHERE json_extract(m.data, '$.change_id') = c.id AND m.data->>'role' = 'nudge'
+             ORDER BY m.id DESC LIMIT 1)
         FROM changes c WHERE c.app = :app ORDER BY c.id DESC LIMIT 50
         """,
         app=app,
@@ -267,15 +274,14 @@ def set_deploying(tx: Tx, change_id: int) -> None:
 
 
 def go_live(tx: Tx, change_id: int, app: str, text: str) -> None:
-    """The change is deployed. An undo offers no undo itself."""
-    undoes = tx.value("SELECT data->>'undoes' FROM changes WHERE id = :id", id=change_id)
+    """The change is deployed. Its message links to the change in the Timeline."""
     tx.execute(
         "UPDATE changes SET data = json_set(data, '$.status', 'live', '$.updated', :now,"
         " '$.live', :now) WHERE id = :id",
         id=change_id,
         now=_now(),
     )
-    _add_message(tx, app, "nudge", text, change_id, actions=[] if undoes else ["undo"])
+    _add_message(tx, app, "nudge", text, change_id, actions=["details"])
 
 
 def fail_change(tx: Tx, change_id: int, app: str, text: str) -> None:
@@ -286,7 +292,7 @@ def fail_change(tx: Tx, change_id: int, app: str, text: str) -> None:
         " WHERE id = (SELECT data->>'undoes' FROM changes WHERE id = :id)",
         id=change_id,
     )
-    _add_message(tx, app, "nudge", text, change_id)
+    _add_message(tx, app, "nudge", text, change_id, actions=["details"])
 
 
 def drop_change(tx: Tx, change_id: int) -> None:
