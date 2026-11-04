@@ -14,9 +14,9 @@ from tests.conftest import _env, signed_in, use_transport
 
 YARD = "https://yard.example"
 REPO = "https://github.com/someone/nudge-plants"
-SRC = "https://api.github.com/repos/stariodev/nudge-template"
+SRC = "https://api.github.com/repos/Bobowski/nudge-template"
 DST = "https://api.github.com/repos/someone/nudge-plants"
-TEMPLATE_TAR = "https://codeload.github.com/stariodev/nudge-template/tar.gz/HEAD"
+TEMPLATE_TAR = "https://codeload.github.com/Bobowski/nudge-template/tar.gz/HEAD"
 NUDGE_JS = b'origins: ["NUDGETHIS_ORIGIN", "http://localhost:8000"],'
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 

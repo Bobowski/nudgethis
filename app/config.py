@@ -133,7 +133,7 @@ class Config:
             # The GitHub account of new repos; empty: the one account Yard's app is on.
             owner=os.environ.get("NUDGE_OWNER", "").strip(),
             template=os.environ.get(
-                "NUDGE_TEMPLATE", "https://github.com/stariodev/nudge-template"
+                "NUDGE_TEMPLATE", "https://github.com/Bobowski/nudge-template"
             ).rstrip("/"),
             google_client_id=require_env("GOOGLE_CLIENT_ID"),
             google_client_secret=require_env("GOOGLE_CLIENT_SECRET"),
