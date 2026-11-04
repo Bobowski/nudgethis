@@ -29,6 +29,7 @@ src = ["app", "tests"]
 extend-exclude = [".agents", ".claude", ".cursor"]
 
 [tool.ruff.lint]
+ignore = ["E501"]  # ruff format owns the line length
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
@@ -42,3 +43,4 @@ project-includes = ["app", "tests"]
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
