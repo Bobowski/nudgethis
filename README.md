@@ -2,6 +2,8 @@
 
 Change a live web app by pointing at it.
 
+![Snap the app, draw on it, say what you want, and Nudge makes the change live](docs/demo.gif)
+
 nudgethis shows your app full-size, with a chat beside it. Draw on the app, say what you want, and an agent changes the code. The app reloads in place when the change is live. It works on a phone: hold the pill to draw, tap it to talk.
 
 - **Nudge** is the agent you talk to (an OpenAI model). It turns what you say and draw into a brief.
