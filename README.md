@@ -10,7 +10,7 @@ nudgethis shows your app full-size, with a chat beside it. Draw on the app, say 
 - **The coder** is a [Cursor Cloud Agent](https://cursor.com). It works on the app's repo and pushes to `main`.
 - **[Yard](https://github.com/stariodev/yard)** deploys each push. nudgethis waits for that deploy, then reloads the app.
 
-The home page makes new apps too. Type what you want ("a habit tracker with a streak for each habit"). nudgethis makes a private repo from [nudge-template](https://github.com/stariodev/nudge-template), or from a public GitHub repo that you link. It starts the app on Yard at `https://<name>.<your domain>` and sends your description as the first change.
+The home page makes new apps too. Type what you want ("a habit tracker with a streak for each habit"). nudgethis makes a private repo from [nudge-template](https://github.com/Bobowski/nudge-template), or from a public GitHub repo that you link. It starts the app on Yard at `https://<name>.<your domain>` and sends your description as the first change.
 
 There is no review step. Every change goes to `main` and to production. "Undo" asks the coder to push a revert. Only the Google accounts that you list can sign in.
 
@@ -39,7 +39,7 @@ yard token new nudgethis
 Then start nudgethis with one command. Put your values in place of the `…`:
 
 ```bash
-yard app new --app nudgethis --repo https://github.com/stariodev/nudgethis --ref main \
+yard app new --app nudgethis --repo https://github.com/Bobowski/nudgethis --ref main \
   --caddy nudge.example.com \
   -e NUDGE_PUBLIC_URL=https://nudge.example.com \
   -e NUDGE_ALLOWED_EMAILS=you@example.com \
@@ -58,7 +58,7 @@ From a clone of this repo, `yard app new --app nudgethis --caddy nudge.example.c
 
 ### Updates
 
-Yard follows `main` of the repo that you gave it. The command above deploys each release of `stariodev/nudgethis` to your host. To choose when you update, deploy your own fork instead. Or add `--trigger manual` and run `yard app deploy --app nudgethis` when you want the new version.
+Yard follows `main` of the repo that you gave it. The command above deploys each release of `Bobowski/nudgethis` to your host. To choose when you update, deploy your own fork instead. Or add `--trigger manual` and run `yard app deploy --app nudgethis` when you want the new version.
 
 ### If something does not work
 
@@ -94,7 +94,7 @@ Optional:
 | `CURSOR_MODEL` | The coder's default model, with optional params: `grok-4.7:context=256k,reasoning_effort=high,fast=false`. `GET https://api.cursor.com/v1/models` lists them. Empty means Cursor's Auto. Each app can pick its own model in its menu. |
 | `NUDGE_DOMAIN` | New apps live at `<name>.<domain>`. Default: the host of `NUDGE_PUBLIC_URL`. |
 | `NUDGE_OWNER` | The GitHub account for new repos. Empty means the one account that Yard's GitHub app is on. |
-| `NUDGE_TEMPLATE` | The repo that a new app starts from. Default `https://github.com/stariodev/nudge-template`. |
+| `NUDGE_TEMPLATE` | The repo that a new app starts from. Default `https://github.com/Bobowski/nudge-template`. |
 | `NUDGE_APPS` | Apps that nudgethis did not make, to open in the frame too: `name=url,name=url`. The coder works on the repo that Yard deploys the app from. |
 | `NUDGE_REPO_BASE` | For an app that Yard does not run: its repo is `<base>/<name>`, such as `https://github.com/you`. |
 | `SESSION_SECRET` | Signs the cookie and seals the saved keys. Empty means nudgethis makes one on the first start and keeps it in the data directory. |
