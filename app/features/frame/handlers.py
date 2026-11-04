@@ -363,7 +363,7 @@ class FramePage:
                 await self.db.write(store.set_reply, placeholder_id, nudge.ERROR_TEXT, None)
                 span.fail(str(exc))
                 return
-            output = str(result.output).strip() or "Done."
+            output = result.output.strip() or "Done."
             await self.db.write(store.set_reply, placeholder_id, output, deps.change_id)
             usage = result.usage
             await self.db.write(
