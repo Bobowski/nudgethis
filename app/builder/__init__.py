@@ -5,6 +5,7 @@ import base64
 import dataclasses
 import hashlib
 import re
+from typing import Any
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 
@@ -76,7 +77,7 @@ def check(key: str, value: str) -> str | None:
 
 def overlay(base: Config, settings: dict[str, str]) -> Config:
     """The environment's config with each setting the person saved on top."""
-    changes: dict[str, object] = {}
+    changes: dict[str, Any] = {}
     for key, value in settings.items():
         if key not in KEYS:
             continue

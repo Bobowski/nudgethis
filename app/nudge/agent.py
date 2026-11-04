@@ -70,7 +70,7 @@ def _fake(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
 
 
 def build_agent(config: Config, *, model: Any = None) -> Agent[TurnDeps, str]:
-    pydantic_ai.BANNER_ENABLED = False
+    pydantic_ai.BANNER_ENABLED = False  # pyrefly: ignore[bad-assignment]
     if model is None:
         if config.openai_api_key.strip():
             model = OpenAIResponsesModel(
