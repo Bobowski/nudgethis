@@ -119,7 +119,7 @@ Open http://127.0.0.1:8000. With no other keys, Nudge is a scripted fake and the
 just check
 ```
 
-`just check` runs ruff, the format check, pyright, and the tests. `just smoke` runs three turns against the real model, and it needs `OPENAI_API_KEY`. Nudge's instructions are in `app/nudge/instructions.md`. [`AGENTS.md`](AGENTS.md) describes the code layout and how each part works.
+`just check` runs ruff, the format check, pyrefly, and the tests. `just smoke` runs three turns against the real model, and it needs `OPENAI_API_KEY`. Nudge's instructions are in `app/nudge/instructions.md`. [`AGENTS.md`](AGENTS.md) describes the code layout and how each part works.
 
 ## License
 

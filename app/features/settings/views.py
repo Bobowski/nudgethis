@@ -198,7 +198,8 @@ def render(
     signals = {f"s_{key}": "" if key in SECRETS else value[key] for key in value}
 
     rows = []
-    totals = {"in": 0, "out": 0, "live": 0, "undone": 0, "dropped": 0, "secs": 0.0, "shots": 0}
+    totals = {"in": 0, "out": 0, "live": 0, "undone": 0, "dropped": 0, "shots": 0}
+    total_secs = 0.0
     for app, turns, t_in, t_out, live, undone, dropped, working, times, last, names in usage:
         secs = coder_seconds(times)
         shot_bytes = sum(shots.get(n, 0) for n in cast(list[str], loads(names or "[]")))
@@ -208,10 +209,10 @@ def render(
             ("live", live),
             ("undone", undone),
             ("dropped", dropped),
-            ("secs", secs),
             ("shots", shot_bytes),
         ):
             totals[key] += n
+        total_secs += secs
         rows.append(
             h.Tr(
                 h.Th({"scope": "row"}, app.removeprefix("nudge-")),
@@ -274,7 +275,7 @@ def render(
                         for big, small in (
                             (tokens(totals["in"] + totals["out"]), "Nudge tokens"),
                             (str(totals["live"]), "changes live"),
-                            (minutes(totals["secs"]), "coder time"),
+                            (minutes(total_secs), "coder time"),
                             (size(data_bytes), "data on disk"),
                         )
                     ],

@@ -83,7 +83,7 @@ async def main() -> int:
         "NUDGE_ALLOWED_EMAILS": ADAM,
     }
     google = httpx.MockTransport(lambda r: google_token(r) or httpx.Response(404))
-    app.main.AsyncClient = partial(httpx.AsyncClient, transport=google)  # type: ignore[misc]
+    app.main.AsyncClient = partial(httpx.AsyncClient, transport=google)
     marked, clean = png(400, 240, True), png(400, 240, False)
     turns = [
         {"text": "make the header text bigger", "shots": [marked, clean]},
