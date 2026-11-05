@@ -1,7 +1,10 @@
+from stario.testing import TestClient
+
 from app.features.auth.urls import AUTH_CALLBACK, AUTH_GOOGLE, LOGOUT
 from app.features.frame.urls import FRAME, SAY
 from app.features.home.urls import HOME
-from tests.conftest import login
+from app.main import bootstrap
+from tests.conftest import ADAM, _env, login
 
 
 async def test_signed_out_pages_go_to_auth(anonymous):
@@ -31,7 +34,35 @@ async def test_auth_sends_to_google_with_a_state(anonymous):
 async def test_an_allowed_account_signs_in(anonymous):
     r = await login(anonymous)
     assert r.status_code == 303
+    assert "session" in r.cookies
     assert (await anonymous.get(HOME.href())).status_code == 200
+
+
+async def test_a_tampered_session_is_signed_out(anonymous):
+    await login(anonymous)
+    value = anonymous.cookies["session"]
+    anonymous.cookies["session"] = value[:-2] + ("AA" if value[-2:] != "AA" else "BB")
+    r = await anonymous.get(HOME.href(), follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers.get("location") == AUTH_GOOGLE.href()
+
+
+async def test_an_old_hand_signed_session_is_signed_out(anonymous):
+    anonymous.cookies["session"] = f"{ADAM}.9999999999.c2lnbmF0dXJl"
+    r = await anonymous.get(HOME.href(), follow_redirects=False)
+    assert r.status_code == 303
+
+
+async def test_https_uses_a_host_only_secure_cookie(tmp_path, monkeypatch):
+    _env(monkeypatch, tmp_path)
+    monkeypatch.setenv("NUDGE_PUBLIC_URL", "https://nudge.example.com")
+    async with TestClient(bootstrap, request_timeout=5) as c:
+        r = await login(c)
+        assert r.cookies.keys() >= {"__Host-session"}
+        assert "session" not in r.cookies
+        set_cookie = " ".join(r.headers.getlist("set-cookie"))
+        assert "Secure" in set_cookie and "Path=/" in set_cookie
+        assert (await c.get(HOME.href())).status_code == 200
 
 
 async def test_another_account_is_refused(anonymous):

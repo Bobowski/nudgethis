@@ -3,6 +3,7 @@ import asyncio
 from httpx import AsyncClient
 from litewriter import LiteWriter, Tx
 from stario import App, Span, serve
+from stario.cookies import SignedCookie
 from stario.http import same_origin, security_headers
 
 from app.assets import ASSETS
@@ -30,10 +31,16 @@ def schema(tx: Tx) -> None:
 
 async def bootstrap(app: App, span: Span):
     config = Config.from_env()
-    session = Session(config.session_secret, secure=config.public_url.startswith("https://"))
-    app.use("/", same_origin(), security_headers(), session.attach())
+    # __Host- keeps a subdomain from setting the cookie; it needs Secure, so a
+    # plain-HTTP NUDGE_PUBLIC_URL (a laptop) gets a cookie without the prefix.
+    https = config.public_url.startswith("https://")
+    cookie = SignedCookie(
+        "__Host-session" if https else "session", keys=[config.session_secret], secure=https
+    )
+    session = Session(cookie, AUTH_GOOGLE.href())
+    app.use("/", same_origin(), security_headers(), session.attach)
     # Everything but /auth and /static is for the people in NUDGE_ALLOWED_EMAILS.
-    signed_in = session.require(AUTH_GOOGLE.href())
+    signed_in = session.require
     app.use("/a", signed_in)
     app.use("/shots", signed_in)
     app.use("/settings", signed_in)
