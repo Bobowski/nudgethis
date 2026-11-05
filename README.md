@@ -76,7 +76,7 @@ Required:
 
 | Key | What it is |
 | --- | --- |
-| `NUDGE_PUBLIC_URL` | The address of nudgethis, such as `https://nudge.example.com`. Default `http://127.0.0.1:8000`. An `https` address makes the cookie secure. |
+| `NUDGE_PUBLIC_URL` | The address of nudgethis, such as `https://nudge.example.com`. Default `http://127.0.0.1:8000`. An `https` address gives the sign-in cookie the name `__Host-session` and `Secure`; an `http` address gives `session`. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google OAuth client. Its redirect URI is `<NUDGE_PUBLIC_URL>/auth/google/callback`. |
 | `NUDGE_ALLOWED_EMAILS` | The Google accounts that may sign in, comma separated. |
 
@@ -97,7 +97,7 @@ Optional:
 | `NUDGE_TEMPLATE` | The repo that a new app starts from. Default `https://github.com/Bobowski/nudge-template`. |
 | `NUDGE_APPS` | Apps that nudgethis did not make, to open in the frame too: `name=url,name=url`. The coder works on the repo that Yard deploys the app from. |
 | `NUDGE_REPO_BASE` | For an app that Yard does not run: its repo is `<base>/<name>`, such as `https://github.com/you`. |
-| `SESSION_SECRET` | Signs the cookie and seals the saved keys. Empty means nudgethis makes one on the first start and keeps it in the data directory. |
+| `SESSION_SECRET` | Signs the cookie and seals the saved keys. 32 characters or more. Empty means nudgethis makes one on the first start and keeps it in the data directory. |
 | `PROJECT_DATA_DIR` | The data directory (`nudgethis.sqlite3`, `shots/`, `session_secret`). Yard sets `/data`, which survives every deploy. Default `./data`. |
 | `NUDGE_HISTORY`, `NUDGE_TIMEOUT`, `NUDGE_FAKE_DELAY` | The messages sent to the model (30), the seconds per turn (60), and the seconds before the fake coder finishes (4). |
 

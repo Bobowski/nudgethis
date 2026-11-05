@@ -1,72 +1,57 @@
-import base64
-import hashlib
-import hmac
-import time
 from dataclasses import dataclass
 
-from stario import Context, Handler, Middleware, Writer
-from stario.cookies import delete_cookie, set_cookie
+from stario import Context, Handler, Writer
+from stario.cookies import SignedCookie
 from stario.datastar import SSE
+
+_USER = "user"
+
+
+def current_user(c: Context) -> str | None:
+    """The signed-in user id of this request, or None. Needs Session.attach."""
+    if _USER not in c.state:
+        raise RuntimeError("current_user() needs the session.attach middleware on this route")
+    return c.state[_USER]
 
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    secret: bytes
-    cookie: str = "session"
-    max_age: int = 60 * 60 * 24 * 14
-    secure: bool = True
+    """Built once in bootstrap. attach and require are middleware: register
+    the bound methods, session.attach and session.require."""
 
-    def sign(self, body: str) -> str:
-        digest = hmac.new(self.secret, body.encode(), hashlib.sha256).digest()
-        return base64.urlsafe_b64encode(digest).decode()
+    cookie: SignedCookie
+    login_url: str
 
     def issue(self, w: Writer, user_id: str) -> None:
-        body = f"{user_id}.{int(time.time()) + self.max_age}"
-        set_cookie(
-            w,
-            self.cookie,
-            f"{body}.{self.sign(body)}",
-            max_age=self.max_age,
-            httponly=True,
-            secure=self.secure,
-            samesite="lax",
-        )
+        self.cookie.set(w, {_USER: user_id})
 
     def clear(self, w: Writer) -> None:
-        delete_cookie(w, self.cookie, httponly=True, secure=self.secure, samesite="lax")
+        self.cookie.delete(w)
 
     def user_id(self, c: Context) -> str | None:
-        body, _, sig = c.req.cookies.get(self.cookie, "").rpartition(".")
-        user_id, _, exp = body.rpartition(".")
-        if not user_id or not exp.isdecimal() or int(exp) < time.time():
-            return None
-        return user_id if hmac.compare_digest(self.sign(body), sig) else None
+        value = self.cookie.get(c.req)
+        user = value.data.get(_USER) if value is not None else None
+        return user if isinstance(user, str) else None
 
-    def attach(self) -> Middleware:
-        """Every request gets c.state["user"]: the user id or None."""
+    def attach(self, inner: Handler) -> Handler:
+        """Every request below it: current_user(c) is the user id or None."""
 
-        def middleware(inner: Handler) -> Handler:
-            async def handler(c: Context, w: Writer) -> None:
-                c.state["user"] = self.user_id(c)
-                await inner(c, w)
+        async def handler(c: Context, w: Writer) -> None:
+            c.state[_USER] = self.user_id(c)
+            await inner(c, w)
 
-            return handler
+        return handler
 
-        return middleware
-
-    def require(self, login_url: str) -> Middleware:
+    def require(self, inner: Handler) -> Handler:
         """A page for signed-in users. A page load redirects. A Datastar action navigates."""
 
-        def middleware(inner: Handler) -> Handler:
-            async def handler(c: Context, w: Writer) -> None:
-                if c.state.get("user") is None:
-                    if c.req.headers.get("datastar-request"):
-                        SSE(w).navigate(login_url)
-                    else:
-                        w.redirect(login_url, status=303)
-                    return
-                await inner(c, w)
+        async def handler(c: Context, w: Writer) -> None:
+            if current_user(c) is None:
+                if c.req.headers.get("datastar-request"):
+                    SSE(w).navigate(self.login_url)
+                else:
+                    w.redirect(self.login_url, status=303)
+                return
+            await inner(c, w)
 
-            return handler
-
-        return middleware
+        return handler
