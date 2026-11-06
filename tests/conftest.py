@@ -1,46 +1,85 @@
 import base64
 import contextlib
-import json
+import hashlib
+import time
 from functools import partial
-from urllib.parse import parse_qs, urlparse
+from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+from stario import json
 from stario.testing import TestClient
 
-from app.features.auth.urls import AUTH_CALLBACK, AUTH_GOOGLE
+from app.common.providers import Http
+from app.common.providers.google import GOOGLE
+from app.features.auth.urls import LOGIN_CALLBACK, LOGIN_START
 from app.main import bootstrap
 
 ADAM = "adam@example.com"
 
 
-def google_token(request: httpx.Request) -> httpx.Response | None:
-    """Google's token endpoint. In tests the code is the email that signs in."""
-    if str(request.url) != "https://oauth2.googleapis.com/token":
-        return None
-    email = parse_qs(request.content.decode())["code"][0]
-    claims = {"aud": "google-id", "email": email, "email_verified": True}
-    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
-    return httpx.Response(200, json={"id_token": f"h.{payload}.s"})
+class FakeProviders(Http):
+    """Google, with the checks it makes. The code carries what Google remembers
+    from the redirect: "<email> <nonce> <challenge> <redirect_uri>". An email
+    that starts with "unverified+" comes back unverified."""
+
+    async def get_json(self, url: str, headers: dict[str, str] | None = None) -> Any:
+        assert url == f"{GOOGLE}/.well-known/openid-configuration"
+        return {
+            "issuer": GOOGLE,
+            "authorization_endpoint": f"{GOOGLE}/o/oauth2/v2/auth",
+            "token_endpoint": "https://oauth2.googleapis.com/token",
+        }
+
+    async def post_form(self, url: str, form: dict[str, str], headers: dict[str, str]) -> Any:
+        raw, nonce, challenge, redirect_uri = form["code"].split(" ")
+        digest = hashlib.sha256(form["code_verifier"].encode()).digest()
+        assert base64.urlsafe_b64encode(digest).decode().rstrip("=") == challenge
+        assert form["redirect_uri"] == redirect_uri
+        assert url == "https://oauth2.googleapis.com/token"
+        basic = base64.b64encode(b"google-id:google-secret").decode()
+        assert headers["Authorization"] == f"Basic {basic}"
+        email = raw.removeprefix("unverified+")
+        claims = {
+            "iss": GOOGLE,
+            "aud": "google-id",
+            "sub": f"sub-{raw}",
+            "email": email,
+            "email_verified": raw == email,
+            "exp": time.time() + 60,
+            "nonce": nonce,
+        }
+        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+        return {"id_token": f"header.{payload}.signature", "access_token": "token"}
 
 
 def use_transport(monkeypatch, handler=None):
-    """Every outside call of the app goes to Google's mock, then to `handler`."""
+    """Every outside call of the app but the sign-in goes to `handler`."""
 
     def answer(request: httpx.Request) -> httpx.Response:
-        return google_token(request) or (handler(request) if handler else httpx.Response(404))
+        return handler(request) if handler else httpx.Response(404)
 
     transport = httpx.MockTransport(answer)
     monkeypatch.setattr("app.main.AsyncClient", partial(httpx.AsyncClient, transport=transport))
 
 
-async def login(client, email=ADAM):
-    r = await client.get(AUTH_GOOGLE.href(), follow_redirects=False)
+async def start(client, provider="google", next_url="/") -> dict[str, str]:
+    """POST the sign-in button; return the query of the redirect to the provider."""
+    r = await client.post(
+        LOGIN_START.href(provider), data={"next": next_url}, follow_redirects=False
+    )
     assert r.status_code == 303
-    state = parse_qs(urlparse(str(r.headers.get("location"))).query)["state"][0]
+    return {k: v[0] for k, v in parse_qs(urlsplit(str(r.headers.get("location"))).query).items()}
+
+
+async def login(client, email=ADAM, provider="google", next_url="/"):
+    """Sign in as Google would: the start, then the callback with a code."""
+    query = await start(client, provider, next_url)
+    parts = [email, query.get("nonce", "-"), query["code_challenge"], query["redirect_uri"]]
     return await client.get(
-        AUTH_CALLBACK.href(),
-        params={"code": email, "state": state},
+        LOGIN_CALLBACK.href(provider),
+        params={"code": " ".join(parts), "state": query["state"]},
         follow_redirects=False,
     )
 
@@ -65,6 +104,7 @@ def _env(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     use_transport(monkeypatch)
+    monkeypatch.setattr("app.main.Http", FakeProviders)
 
 
 @pytest.fixture
