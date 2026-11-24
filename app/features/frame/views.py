@@ -433,7 +433,7 @@ def render(
             ),
             data.init(at.get(FRAME_LIVE.href(name), retry="always")),
             data.effect("app.frame.rev($_rev)"),
-            data.on("pagehide", "app.snap.stop()", target="window"),
+            data.on("pagehide", "app.snap.stop()", window=True),
             # Esc closes a dropdown, then the sheet; / opens the sheet.
             data.on(
                 "keydown",
@@ -441,7 +441,7 @@ def render(
                 " ? ($_apps = false, $_menu = false) : ($_sheet = false));"
                 " evt.key === '/' && !$_sheet && !evt.target.closest('input, textarea, select')"
                 " && (evt.preventDefault(), $_sheet = true, $_view = 'chat')",
-                target="window",
+                window=True,
             ),
             # The app's colour: every accent on the page follows it.
             h.Style(f"#frame {{ --accent: {accent(color)}; }}"),
