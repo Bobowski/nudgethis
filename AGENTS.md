@@ -143,16 +143,14 @@ def render_list(q: str, n: int, rows: list[Bookmark], total: int) -> HtmlElement
         data.init(at.get(BOOKMARKS_LIVE.href(query={"q": q or None, "page": n}))),
         h.Ul(*[h.Li(h.A({"href": b.url}, b.title)) for b in rows]),
         None if rows else h.P("No bookmarks yet."),
-        h.Nav(
-            *[
-                h.A(
-                    classes({"active": p == n}),
-                    {"href": BOOKMARKS.href(query={"q": q or None, "page": p})},
-                    str(p),
-                )
-                for p in pages
-            ]
-        ),
+        h.Nav(*[
+            h.A(
+                classes({"active": p == n}),
+                {"href": BOOKMARKS.href(query={"q": q or None, "page": p})},
+                str(p),
+            )
+            for p in pages
+        ]),
     )
 
 

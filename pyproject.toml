@@ -26,7 +26,7 @@ dev = [
 target-version = "py314"
 line-length = 100
 src = ["app", "tests"]
-extend-exclude = [".agents", ".claude", ".cursor"]
+extend-exclude = ["AGENTS.md", ".agents", ".claude", ".cursor"]
 
 [tool.ruff.lint]
 ignore = ["E501"]  # ruff format owns the line length
